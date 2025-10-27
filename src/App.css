@@ -36,3 +36,36 @@
     transform: rotate(360deg);
   }
 }
+@keyframes blinkGreen {
+  0%, 100% {
+    color: limegreen;
+    text-shadow: 0 0 10px limegreen, 0 0 20px limegreen;
+  }
+  50% {
+    color: #0a0;
+    text-shadow: none;
+  }
+}
+
+@keyframes blinkRed {
+  0%, 100% {
+    color: red;
+    text-shadow: 0 0 10px red, 0 0 20px red;
+  }
+  50% {
+    color: #900;
+    text-shadow: none;
+  }
+}
+
+.blink-green {
+  font-weight: bold;
+  text-align: center;
+  animation: blinkGreen 1s infinite;
+}
+
+.blink-red {
+  font-weight: bold;
+  text-align: center;
+  animation: blinkRed 1s infinite;
+}
