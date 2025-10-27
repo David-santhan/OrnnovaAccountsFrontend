@@ -661,7 +661,6 @@ const handleSaveChanges = async () => {
               )}
             </TableCell>
           </TableRow>
-
           {/* Raised Date */}
 <TableRow>
   <TableCell>
