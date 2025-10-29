@@ -79,6 +79,7 @@ const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
 
   const filteredClients = clients.filter(client =>
   client.clientName.toLowerCase().includes(searchTerm.toLowerCase())
+  
 );
 
   const [newClient, setNewClient] = useState({
@@ -820,4 +821,4 @@ const handleClientCancel = () => {
   );
 }
 
-export default Home;
+ export default Home;

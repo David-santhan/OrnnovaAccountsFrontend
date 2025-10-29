@@ -10,7 +10,6 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import dayjs from "dayjs";
 import axios from "axios";
-
 function Salaries() {
   const [salaries, setSalaries] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
@@ -57,6 +56,7 @@ function Salaries() {
   const [allEmployees,setAllEmployees] = useState([]);
   const [viewMonthlySalaryModal, setViewMonthlySalaryModal] = useState(false);
 const [selectedSalaryRecord, setSelectedSalaryRecord] = useState(null);
+const [pendingSummary, setPendingSummary] = useState([]);
  const [monthlySalaryFormData, setMonthlySalaryFormData] = useState({
   empId: "",            // employee_id from DB
   empName: "",          // employee_name from DB
@@ -67,6 +67,7 @@ const [selectedSalaryRecord, setSelectedSalaryRecord] = useState(null);
   actualToPay: 0,       // read-only, NET TAKEHOME
 });
 const currentMonth = dayjs().format("YYYY-MM");
+
 // get monthly Salaries by Month
 const fetchAllMonthlySalaries = async () => {
   try {
@@ -187,48 +188,89 @@ const monthlySalaryHandleSubmit = async () => {
   const fetchAllEmployees = async () => {
     const res = await fetch("http://localhost:7760/getemployees");
     const data = await res.json();
+    console.log(data)
     setAllEmployees(Array.isArray(data) ? data : []);
   };
 
 // Filtered salaries inline
-const filteredSalaries = salaries
-  .map((s) => {
-    // Find matching employee details
-    const employee = allEmployees.find(emp => emp.employee_id === s.employee_id);
 
-    // Find matching salary record for selected month
-    const salaryRecord = monthlySalaryData.find(
-      (m) => m.employee_id === s.employee_id && m.month === filterMonthYear
+
+const getMonthRange = (start, end) => {
+  const months = [];
+  let current = dayjs(start);
+  const endDate = dayjs(end);
+  while (current.isBefore(endDate) || current.isSame(endDate, "month")) {
+    months.push(current.format("YYYY-MM"));
+    current = current.add(1, "month");
+  }
+  return months;
+};
+
+const filteredSalaries = allEmployees.flatMap((emp) => {
+  if (!emp.date_of_joining) return [];
+
+  const [joinYear, joinMonth] = emp.date_of_joining.split("-").map(Number);
+  const joinDate = dayjs(`${joinYear}-${String(joinMonth).padStart(2, "0")}-01`);
+  const selectedDate = dayjs(`${filterMonthYear}-01`);
+
+  if (joinDate.isAfter(selectedDate)) return [];
+
+  const monthsBetween = getMonthRange(joinDate, selectedDate);
+
+  const paidMonths = monthlySalaryData
+    .filter((m) => m.employee_id === emp.employee_id)
+    .map((m) => m.month);
+
+  // ✅ Find employee base salary info
+  const baseSalary = salaries.find((s) => s.employee_id === emp.employee_id) || {};
+
+  const pendingMonths = monthsBetween.filter((m) => !paidMonths.includes(m));
+
+  if (view === "paidSalaries") {
+    const currentPaid = monthlySalaryData.find(
+      (m) => m.employee_id === emp.employee_id && m.month === filterMonthYear
     );
+    if (!currentPaid) return [];
+    return [
+      {
+        ...emp,
+        month: filterMonthYear,
+        paid: "Yes",
+        paid_amount: parseFloat(currentPaid.paid_amount || 0),
+        net_takehome: parseFloat(currentPaid.net_takehome || baseSalary.net_takehome || 0),
+        ctc: parseFloat(baseSalary.ctc || 0),
+      },
+    ];
+  }
 
-    return {
-      ...s,
-      date_of_joining: employee ? employee.date_of_joining : null,
-      paid: salaryRecord ? salaryRecord.paid : "No",
-      paid_amount: salaryRecord ? parseFloat(salaryRecord.paid_amount || 0) : 0,
+  if (view === "pendingSalaries") {
+    return pendingMonths.map((m) => ({
+      ...emp,
+      month: m,
+      paid: "No",
+      paid_amount: 0,
+      net_takehome: parseFloat(baseSalary.net_takehome || 0),
+      ctc: parseFloat(baseSalary.ctc || 0),
+    }));
+  }
+
+  const salaryRecord = monthlySalaryData.find(
+    (m) => m.employee_id === emp.employee_id && m.month === filterMonthYear
+  );
+
+  return [
+    {
+      ...emp,
       month: filterMonthYear,
-      net_takehome: parseFloat(s.net_takehome || 0),
-    };
-  })
-  .filter((s) => {
-    if (!s.date_of_joining) return false;
+      paid: salaryRecord ? "Yes" : "No",
+      paid_amount: salaryRecord ? parseFloat(salaryRecord.paid_amount || 0) : 0,
+      net_takehome: parseFloat(baseSalary.net_takehome || 0),
+      ctc: parseFloat(baseSalary.ctc || 0),
+    },
+  ];
+});
 
-    // Parse selected month/year
-    const [selectedYear, selectedMonth] = filterMonthYear.split("-").map(Number);
 
-    // Parse employee joining date
-    const [joinYear, joinMonth] = s.date_of_joining.split("-").map(Number);
-
-    // Include employees joined **on or before the selected month** (same month included)
-    const isJoined = joinYear < selectedYear || (joinYear === selectedYear && joinMonth <= selectedMonth);
-    if (!isJoined) return false;
-
-    // Filter by salary status
-    if (view === "paidSalaries") return s.paid === "Yes";
-    if (view === "pendingSalaries") return s.paid === "No";
-
-    return true; // allSalaries
-  });
 
 
 
@@ -264,6 +306,24 @@ const totalAll = filteredSalaries.reduce(
   useEffect(() => {
     fetchSalaries();
   }, []);
+const fetchPendingSummary = async () => {
+  try {
+    const res = await axios.get("http://localhost:7760/api/pending-salaries");
+    if (res.data.success) {
+      setPendingSummary(res.data.data);
+    } else {
+      setPendingSummary([]);
+    }
+  } catch (err) {
+    console.error("Error fetching pending summary:", err);
+    setPendingSummary([]);
+  }
+};
+
+useEffect(() => {
+  fetchPendingSummary();
+}, []);
+
 
   const fetchEmployees = async () => {
     fetch("http://localhost:7760/getAvailableEmployeesForSalaries")
@@ -1338,6 +1398,8 @@ const getPaidStatus = (empId) => {
 
     </div>
   );
+
+  
 }
 
 export default Salaries;
