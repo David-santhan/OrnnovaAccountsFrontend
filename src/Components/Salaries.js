@@ -195,6 +195,9 @@ const monthlySalaryHandleSubmit = async () => {
 // Filtered salaries inline
 
 
+// Utility: get all months between two dates (format: "YYYY-MM")
+
+
 const getMonthRange = (start, end) => {
   const months = [];
   let current = dayjs(start);
@@ -269,8 +272,6 @@ const filteredSalaries = allEmployees.flatMap((emp) => {
     },
   ];
 });
-
-
 
 
 
@@ -627,6 +628,26 @@ const getPaidStatus = (empId) => {
             </TableRow>
           </TableHead>
        <TableBody>
+        {/* <Box display="flex" justifyContent="flex-end" alignItems="center" mb={2}>
+  <TextField
+    label="Select Month"
+    type="month"
+    value={filterMonthYear}
+    onChange={(e) => setFilterMonthYear(e.target.value)}
+    InputLabelProps={{ shrink: true }}
+    size="small"
+    sx={{ width: 200 }}
+  />
+  <Button
+    variant="contained"
+    color="primary"
+    sx={{ ml: 2 }}
+    onClick={() => fetchPendingSummary(filterMonthYear)} // call backend with selected month
+  >
+    Search
+  </Button>
+</Box> */}
+
   {filteredSalaries.length > 0 ? (
     filteredSalaries.map((s) => {
       // Check if salary has been paid for the current month
@@ -651,7 +672,11 @@ const getPaidStatus = (empId) => {
       textShadow: isPaid === "Yes"
         ? "0 0 5px green, 0 0 10px green"
         : "0 0 5px red, 0 0 10px red",
-    }}
+
+    }
+    
+  }
+  
   >
     {isPaid === "Yes" ? "Yes" : "No"}
   </span>
@@ -1000,8 +1025,10 @@ const getPaidStatus = (empId) => {
           <TableCell style={{ fontWeight: "bold" }}>Net Take</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>Paid</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>Action</TableCell>
+         
         </TableRow>
       </TableHead>
+      
       <TableBody>
         {filteredSalaries
           .filter((s) => getPaidStatus(s.employee_id) === "No")
