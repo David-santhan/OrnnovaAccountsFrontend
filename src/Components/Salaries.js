@@ -672,11 +672,7 @@ const getPaidStatus = (empId) => {
       textShadow: isPaid === "Yes"
         ? "0 0 5px green, 0 0 10px green"
         : "0 0 5px red, 0 0 10px red",
-
-    }
-    
-  }
-  
+    }}
   >
     {isPaid === "Yes" ? "Yes" : "No"}
   </span>
@@ -1017,56 +1013,59 @@ const getPaidStatus = (empId) => {
   <TableContainer component={Paper} elevation={3} style={{ width: "100%", height: "100%" }}>
     <Table stickyHeader style={{ minWidth: "100%" }}>
       <TableHead style={{ backgroundColor: "#f5f5f5" }}>
-        <TableRow>
-          <TableCell style={{ fontWeight: "bold" }}>Emp ID</TableCell>
-          <TableCell style={{ fontWeight: "bold" }}>Emp Name</TableCell>
-          {/* <TableCell style={{ fontWeight: "bold" }}>Month</TableCell> */}
-          <TableCell style={{ fontWeight: "bold" }}>Ctc</TableCell>
-          <TableCell style={{ fontWeight: "bold" }}>Net Take</TableCell>
-          <TableCell style={{ fontWeight: "bold" }}>Paid</TableCell>
-          <TableCell style={{ fontWeight: "bold" }}>Action</TableCell>
-         
-        </TableRow>
-      </TableHead>
-      
+  <TableRow>
+    <TableCell style={{ fontWeight: "bold" }}>Emp ID</TableCell>
+    <TableCell style={{ fontWeight: "bold" }}>Emp Name</TableCell>
+    <TableCell style={{ fontWeight: "bold" }}>Month-Year</TableCell> {/* ✅ Added */}
+    <TableCell style={{ fontWeight: "bold" }}>CTC</TableCell>
+    <TableCell style={{ fontWeight: "bold" }}>Net Take</TableCell>
+    <TableCell style={{ fontWeight: "bold" }}>Paid</TableCell>
+    <TableCell style={{ fontWeight: "bold" }}>Action</TableCell>
+  </TableRow>
+</TableHead>
+
       <TableBody>
-        {filteredSalaries
-          .filter((s) => getPaidStatus(s.employee_id) === "No")
-          .map((s) => (
-            <TableRow key={s._id || s.id} hover onClick={() => setSelectedSalary(s)}>
-              <TableCell>{s.employee_id}</TableCell>
-              <TableCell>{s.employee_name}</TableCell>
-              {/* <TableCell>{dayjs().format("MMMM YYYY")}</TableCell> */}
-              <TableCell>{formatCurrency(s.ctc)}</TableCell>
-              <TableCell>{formatCurrency(s.net_takehome)}</TableCell>
-              <TableCell>
-                <span
-                  style={{
-                    color: "red",
-                    fontWeight: "bold",
-                    display: "inline-block",
-                    animation: "heartbeat 1s infinite",
-                    textShadow: "0 0 5px red, 0 0 10px red",
-                  }}
-                >
-                  No
-                </span>
-              </TableCell>
-              <Button
-              variant={"outlined"}
-              color={"secondary"}
-              onClick={(e) => {
-                e.stopPropagation(); // Prevent row onClick
-               
-                  monthlySalaryOpenDialog(s);
-                
-              }}
-            >
-             Pay
-            </Button>
-            </TableRow>
-          ))}
-      </TableBody>
+  {filteredSalaries
+    .filter((s) => getPaidStatus(s.employee_id) === "No")
+    .map((s) => (
+      <TableRow key={s._id || s.id} hover onClick={() => setSelectedSalary(s)}>
+        <TableCell>{s.employee_id}</TableCell>
+        <TableCell>{s.employee_name}</TableCell>
+
+        {/* ✅ Show pending month */}
+        <TableCell>{dayjs(s.month, "YYYY-MM").format("MMMM YYYY")}</TableCell>
+
+        <TableCell>{formatCurrency(s.ctc)}</TableCell>
+        <TableCell>{formatCurrency(s.net_takehome)}</TableCell>
+        <TableCell>
+          <span
+            style={{
+              color: "red",
+              fontWeight: "bold",
+              display: "inline-block",
+              animation: "heartbeat 1s infinite",
+              textShadow: "0 0 5px red, 0 0 10px red",
+            }}
+          >
+            No
+          </span>
+        </TableCell>
+        <TableCell>
+          <Button
+            variant="outlined"
+            color="secondary"
+            onClick={(e) => {
+              e.stopPropagation(); // Prevent row onClick
+              monthlySalaryOpenDialog(s);
+            }}
+          >
+            Pay
+          </Button>
+        </TableCell>
+      </TableRow>
+    ))}
+</TableBody>
+
     </Table>
   </TableContainer>
 )}
