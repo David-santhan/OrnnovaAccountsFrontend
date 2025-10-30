@@ -209,6 +209,9 @@ const getMonthRange = (start, end) => {
   return months;
 };
 
+// =========================
+// 💰 Generate Filtered Salaries
+// =========================
 const filteredSalaries = allEmployees.flatMap((emp) => {
   if (!emp.date_of_joining) return [];
 
@@ -219,60 +222,49 @@ const filteredSalaries = allEmployees.flatMap((emp) => {
   if (joinDate.isAfter(selectedDate)) return [];
 
   const monthsBetween = getMonthRange(joinDate, selectedDate);
-
   const paidMonths = monthlySalaryData
     .filter((m) => m.employee_id === emp.employee_id)
     .map((m) => m.month);
 
-  // ✅ Find employee base salary info
-  const baseSalary = salaries.find((s) => s.employee_id === emp.employee_id) || {};
+  const baseSalary =
+    salaries.find((s) => s.employee_id === emp.employee_id) || {};
 
-  const pendingMonths = monthsBetween.filter((m) => !paidMonths.includes(m));
+  const salaryRecord = monthlySalaryData.find(
+    (m) => m.employee_id === emp.employee_id && m.month === filterMonthYear
+  );
 
   if (view === "paidSalaries") {
     const currentPaid = monthlySalaryData.find(
       (m) => m.employee_id === emp.employee_id && m.month === filterMonthYear
     );
     if (!currentPaid) return [];
+
     return [
       {
         ...emp,
         month: filterMonthYear,
         paid: "Yes",
         paid_amount: parseFloat(currentPaid.paid_amount || 0),
-        net_takehome: parseFloat(currentPaid.net_takehome || baseSalary.net_takehome || 0),
+        net_takehome: parseFloat(
+          currentPaid.net_takehome || baseSalary.net_takehome || 0
+        ),
         ctc: parseFloat(baseSalary.ctc || 0),
+        paid_date: currentPaid.paid_date || "",
       },
     ];
   }
 
-  if (view === "pendingSalaries") {
-    return pendingMonths.map((m) => ({
-      ...emp,
-      month: m,
-      paid: "No",
-      paid_amount: 0,
-      net_takehome: parseFloat(baseSalary.net_takehome || 0),
-      ctc: parseFloat(baseSalary.ctc || 0),
-    }));
-  }
-
-  const salaryRecord = monthlySalaryData.find(
-    (m) => m.employee_id === emp.employee_id && m.month === filterMonthYear
-  );
-
-  return [
-    {
-      ...emp,
-      month: filterMonthYear,
-      paid: salaryRecord ? "Yes" : "No",
-      paid_amount: salaryRecord ? parseFloat(salaryRecord.paid_amount || 0) : 0,
-      net_takehome: parseFloat(baseSalary.net_takehome || 0),
-      ctc: parseFloat(baseSalary.ctc || 0),
-    },
-  ];
+  // For pending salaries (default)
+  const pendingMonths = monthsBetween.filter((m) => !paidMonths.includes(m));
+  return pendingMonths.map((month) => ({
+    ...emp,
+    month,
+    paid: "No",
+    paid_amount: 0,
+    net_takehome: parseFloat(baseSalary.net_takehome || 0),
+    ctc: parseFloat(baseSalary.ctc || 0),
+  }));
 });
-
 
 
 
@@ -616,6 +608,27 @@ const getPaidStatus = (empId) => {
   {/* All Salaries */}
   {view === "allSalaries" && (
    <TableContainer component={Paper} elevation={3} style={{ width: "100%", height: "500px" }}>
+   <Divider
+  textAlign="center"
+  sx={{
+    marginY: 2,
+    "&::before, &::after": {
+      borderColor: "block",
+    },
+  }}
+>
+  <Typography
+    variant="h6"
+    sx={{
+      color: "block",
+      fontWeight: "bold",
+      letterSpacing: "0.5px",
+    }}
+  >
+    {dayjs(month, "YYYY-MM").format("MMMM YYYY")}
+  </Typography>
+</Divider>
+
         <Table stickyHeader style={{ minWidth: "100%" }}>
           <TableHead style={{ backgroundColor: "#f5f5f5" }}>
             <TableRow>
@@ -628,25 +641,7 @@ const getPaidStatus = (empId) => {
             </TableRow>
           </TableHead>
        <TableBody>
-        {/* <Box display="flex" justifyContent="flex-end" alignItems="center" mb={2}>
-  <TextField
-    label="Select Month"
-    type="month"
-    value={filterMonthYear}
-    onChange={(e) => setFilterMonthYear(e.target.value)}
-    InputLabelProps={{ shrink: true }}
-    size="small"
-    sx={{ width: 200 }}
-  />
-  <Button
-    variant="contained"
-    color="primary"
-    sx={{ ml: 2 }}
-    onClick={() => fetchPendingSummary(filterMonthYear)} // call backend with selected month
-  >
-    Search
-  </Button>
-</Box> */}
+      
 
   {filteredSalaries.length > 0 ? (
     filteredSalaries.map((s) => {
@@ -921,154 +916,154 @@ const getPaidStatus = (empId) => {
 </Dialog>
 
  {/* Paid Salaries */}
+{/* Paid Salaries */}
 {view === "paidSalaries" && (
   <TableContainer component={Paper} elevation={3} style={{ width: "100%", height: "100%" }}>
+    <Divider
+  textAlign="center"
+  sx={{
+    marginY: 2,
+    "&::before, &::after": {
+      borderColor: "block",
+    },
+  }}
+>
+  <Typography
+    variant="h6"
+    sx={{
+      color: "block",
+      fontWeight: "bold",
+      letterSpacing: "0.5px",
+    }}
+  >
+    {dayjs(month, "YYYY-MM").format("MMMM YYYY")}
+  </Typography>
+</Divider>
+
     <Table stickyHeader style={{ minWidth: "100%" }}>
       <TableHead style={{ backgroundColor: "#f5f5f5" }}>
         <TableRow>
           <TableCell style={{ fontWeight: "bold" }}>Emp ID</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>Emp Name</TableCell>
-          {/* <TableCell style={{ fontWeight: "bold" }}>Month</TableCell> */}
-          <TableCell style={{ fontWeight: "bold" }}>Ctc</TableCell>
+          <TableCell style={{ fontWeight: "bold" }}>CTC</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>Net Take</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>Actual Paid</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>Difference</TableCell>
+          <TableCell style={{ fontWeight: "bold" }}>Paid Date</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>Paid</TableCell>
         </TableRow>
       </TableHead>
-     <TableBody>
-  {filteredSalaries
-    .filter((s) => getPaidStatus(s.employee_id) === "Yes")
-    .map((s) => {
-      // Find corresponding salary record from monthlySalaryData
-       const salaryRecord = monthlySalaryData.find(
-      (m) => m.employee_id === s.employee_id && m.month === filterMonthYear
-    );
 
-      const paidAmount = salaryRecord ? salaryRecord.paid_amount : 0;
-      const Difference = s.net_takehome - paidAmount;
-      return (
-        <TableRow
-          key={s._id || s.id}
-          hover
-          onClick={() => setSelectedSalary(s)}
-        >
-          <TableCell>{s.employee_id}</TableCell>
-          <TableCell>{s.employee_name}</TableCell>
-          {/* <TableCell>{dayjs().format("MMMM YYYY")}</TableCell> */}
-          <TableCell>{formatCurrency(s.ctc)}</TableCell>
-          <TableCell>{formatCurrency(s.net_takehome)}</TableCell>
-          <TableCell>{formatCurrency(paidAmount)}</TableCell>
-          <TableCell
-            style={{
-              fontWeight: Difference !== 0 ? "bold" : "normal",
-              color: Difference !== 0 ? "indianred" : "gray",
-            }}
-          >
-            {formatCurrency(Difference)}
-          </TableCell>
-          {/* ✅ Glowing Heartbeat Paid Indicator */}
-          <TableCell>
-            <span
-              style={{
-                color: "green",
-                fontWeight: "bold",
-                display: "inline-block",
-                animation: "heartbeat 1s infinite",
-                textShadow: "0 0 5px green, 0 0 10px green",
-              }}
+      <TableBody>
+        {filteredSalaries.map((s) => {
+          const difference = s.net_takehome - s.paid_amount;
+          return (
+            <TableRow
+              key={s.employee_id}
+              hover
+              onClick={() => setSelectedSalary(s)}  // ✅ Added same as allSalaries
+              style={{ cursor: "pointer" }}         // ✅ Visual cue
             >
-              Yes
-            </span>
-            <style>
-              {`
-                @keyframes heartbeat {
-                  0%, 100% { transform: scale(1); }
-                  25%, 75% { transform: scale(1.2); }
-                  50% { transform: scale(1); }
-                }
-              `}
-            </style>
-          </TableCell>
-        </TableRow>
-      );
-    })}
-</TableBody>
+              <TableCell>{s.employee_id}</TableCell>
+              <TableCell>{s.employee_name}</TableCell>
+              <TableCell>{s.ctc}</TableCell>
+              <TableCell>{s.net_takehome}</TableCell>
+              <TableCell>{s.paid_amount}</TableCell>
+              <TableCell>{difference}</TableCell>
+              <TableCell>
+                {s.paid_date
+                  ? new Date(s.paid_date).toLocaleDateString()
+                  : "-"}
+              </TableCell>
 
+              {/* ✅ Paid status color */}
+              <TableCell
+                sx={{
+                  color: s.paid === "Yes" ? "green" : "red",
+                  fontWeight: 600,
+                  textShadow:
+                    s.paid === "Yes"
+                      ? "0 0 5px limegreen, 0 0 10px green"
+                      : "0 0 5px red, 0 0 10px red",
+                }}
+              >
+                {s.paid}
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
     </Table>
-    <style>
-      {`
-        @keyframes heartbeat {
-          0%, 100% { transform: scale(1); }
-          25%, 75% { transform: scale(1.2); }
-          50% { transform: scale(1); }
-        }
-      `}
-    </style>
   </TableContainer>
 )}
 
 {/* Pending Salaries */}
 {view === "pendingSalaries" && (
   <TableContainer component={Paper} elevation={3} style={{ width: "100%", height: "100%" }}>
+    <Divider
+  textAlign="center"
+  sx={{
+    marginY: 2,
+    "&::before, &::after": {
+      borderColor: "block",
+    },
+  }}
+>
+  <Typography
+    variant="h6"
+    sx={{
+      color: "block",
+      fontWeight: "bold",
+      letterSpacing: "0.5px",
+    }}
+  >
+    {dayjs(month, "YYYY-MM").format("MMMM YYYY")}
+  </Typography>
+</Divider>
+
     <Table stickyHeader style={{ minWidth: "100%" }}>
       <TableHead style={{ backgroundColor: "#f5f5f5" }}>
-  <TableRow>
-    <TableCell style={{ fontWeight: "bold" }}>Emp ID</TableCell>
-    <TableCell style={{ fontWeight: "bold" }}>Emp Name</TableCell>
-    <TableCell style={{ fontWeight: "bold" }}>Month-Year</TableCell> {/* ✅ Added */}
-    <TableCell style={{ fontWeight: "bold" }}>CTC</TableCell>
-    <TableCell style={{ fontWeight: "bold" }}>Net Take</TableCell>
-    <TableCell style={{ fontWeight: "bold" }}>Paid</TableCell>
-    <TableCell style={{ fontWeight: "bold" }}>Action</TableCell>
-  </TableRow>
-</TableHead>
+        <TableRow>
+          <TableCell style={{ fontWeight: "bold" }}>Emp ID</TableCell>
+          <TableCell style={{ fontWeight: "bold" }}>Emp Name</TableCell>
+          <TableCell style={{ fontWeight: "bold" }}>Month-Year</TableCell>
+          <TableCell style={{ fontWeight: "bold" }}>CTC</TableCell>
+          <TableCell style={{ fontWeight: "bold" }}>Net Take</TableCell>
+          <TableCell style={{ fontWeight: "bold" }}>Paid</TableCell>
+          <TableCell style={{ fontWeight: "bold" }}>Action</TableCell>
+        </TableRow>
+      </TableHead>
 
       <TableBody>
-  {filteredSalaries
-    .filter((s) => getPaidStatus(s.employee_id) === "No")
-    .map((s) => (
-      <TableRow key={s._id || s.id} hover onClick={() => setSelectedSalary(s)}>
-        <TableCell>{s.employee_id}</TableCell>
-        <TableCell>{s.employee_name}</TableCell>
-
-        {/* ✅ Show pending month */}
-        <TableCell>{dayjs(s.month, "YYYY-MM").format("MMMM YYYY")}</TableCell>
-
-        <TableCell>{formatCurrency(s.ctc)}</TableCell>
-        <TableCell>{formatCurrency(s.net_takehome)}</TableCell>
-        <TableCell>
-          <span
-            style={{
-              color: "red",
-              fontWeight: "bold",
-              display: "inline-block",
-              animation: "heartbeat 1s infinite",
-              textShadow: "0 0 5px red, 0 0 10px red",
-            }}
-          >
-            No
-          </span>
-        </TableCell>
-        <TableCell>
-          <Button
-            variant="outlined"
-            color="secondary"
-            onClick={(e) => {
-              e.stopPropagation(); // Prevent row onClick
-              monthlySalaryOpenDialog(s);
-            }}
-          >
-            Pay
-          </Button>
-        </TableCell>
-      </TableRow>
-    ))}
-</TableBody>
-
+        {filteredSalaries.map((s) => (
+          <TableRow key={s.employee_id + s.month} hover onClick={() => setSelectedSalary(s)}>
+            <TableCell>{s.employee_id}</TableCell>
+            <TableCell>{s.employee_name}</TableCell>
+            <TableCell>{dayjs(s.month, "YYYY-MM").format("MMMM YYYY")}</TableCell>
+            <TableCell>{formatCurrency(s.ctc)}</TableCell>
+            <TableCell>{formatCurrency(s.net_takehome)}</TableCell>
+            <TableCell>
+              <span style={{ color: "red", fontWeight: "bold" }}>No</span>
+            </TableCell>
+            <TableCell>
+              <Button
+                variant="outlined"
+                color="secondary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  monthlySalaryOpenDialog(s);
+                }}
+              >
+                Pay
+              </Button>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
     </Table>
   </TableContainer>
 )}
+
 </div>
 
 
