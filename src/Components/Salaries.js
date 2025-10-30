@@ -224,11 +224,25 @@ const filteredSalaries = allEmployees.flatMap((emp) => {
     .filter((m) => m.employee_id === emp.employee_id)
     .map((m) => m.month);
 
-  // ✅ Find employee base salary info
-  const baseSalary = salaries.find((s) => s.employee_id === emp.employee_id) || {};
+  const baseSalary =
+    salaries.find((s) => s.employee_id === emp.employee_id) || {};
 
   const pendingMonths = monthsBetween.filter((m) => !paidMonths.includes(m));
 
+  // ✅ Fix: Always show *all pending months up to selected month*
+  if (view === "pendingSalaries") {
+    if (pendingMonths.length === 0) return [];
+    return pendingMonths.map((m) => ({
+      ...emp,
+      month: m,
+      paid: "No",
+      paid_amount: 0,
+      net_takehome: parseFloat(baseSalary.net_takehome || 0),
+      ctc: parseFloat(baseSalary.ctc || 0),
+    }));
+  }
+
+  // ✅ Paid salaries view (same as before)
   if (view === "paidSalaries") {
     const currentPaid = monthlySalaryData.find(
       (m) => m.employee_id === emp.employee_id && m.month === filterMonthYear
@@ -240,23 +254,15 @@ const filteredSalaries = allEmployees.flatMap((emp) => {
         month: filterMonthYear,
         paid: "Yes",
         paid_amount: parseFloat(currentPaid.paid_amount || 0),
-        net_takehome: parseFloat(currentPaid.net_takehome || baseSalary.net_takehome || 0),
+        net_takehome: parseFloat(
+          currentPaid.net_takehome || baseSalary.net_takehome || 0
+        ),
         ctc: parseFloat(baseSalary.ctc || 0),
       },
     ];
   }
 
-  if (view === "pendingSalaries") {
-    return pendingMonths.map((m) => ({
-      ...emp,
-      month: m,
-      paid: "No",
-      paid_amount: 0,
-      net_takehome: parseFloat(baseSalary.net_takehome || 0),
-      ctc: parseFloat(baseSalary.ctc || 0),
-    }));
-  }
-
+  // ✅ Combined view (to show status for selected month)
   const salaryRecord = monthlySalaryData.find(
     (m) => m.employee_id === emp.employee_id && m.month === filterMonthYear
   );
@@ -272,6 +278,7 @@ const filteredSalaries = allEmployees.flatMap((emp) => {
     },
   ];
 });
+
 
 
 
@@ -594,11 +601,7 @@ const getPaidStatus = (empId) => {
             />
           </div>
         )}
-      </div>
-
-
-
-      
+      </div>    
     </div>
 <div
   style={{
@@ -616,6 +619,7 @@ const getPaidStatus = (empId) => {
   {/* All Salaries */}
   {view === "allSalaries" && (
    <TableContainer component={Paper} elevation={3} style={{ width: "100%", height: "500px" }}>
+                <Divider>{month}</Divider>
         <Table stickyHeader style={{ minWidth: "100%" }}>
           <TableHead style={{ backgroundColor: "#f5f5f5" }}>
             <TableRow>
@@ -923,8 +927,11 @@ const getPaidStatus = (empId) => {
  {/* Paid Salaries */}
 {view === "paidSalaries" && (
   <TableContainer component={Paper} elevation={3} style={{ width: "100%", height: "100%" }}>
+     <Divider>{month}</Divider>
     <Table stickyHeader style={{ minWidth: "100%" }}>
       <TableHead style={{ backgroundColor: "#f5f5f5" }}>
+                   
+
         <TableRow>
           <TableCell style={{ fontWeight: "bold" }}>Emp ID</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>Emp Name</TableCell>
@@ -1011,6 +1018,8 @@ const getPaidStatus = (empId) => {
 {/* Pending Salaries */}
 {view === "pendingSalaries" && (
   <TableContainer component={Paper} elevation={3} style={{ width: "100%", height: "100%" }}>
+                      <Divider>{month}</Divider>
+
     <Table stickyHeader style={{ minWidth: "100%" }}>
       <TableHead style={{ backgroundColor: "#f5f5f5" }}>
   <TableRow>
