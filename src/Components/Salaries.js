@@ -15,6 +15,7 @@ function Salaries() {
   const [openDialog, setOpenDialog] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [selectedSalary, setSelectedSalary] = useState(null);
+  
   const [newSalary, setNewSalary] = useState({
     employee_id: "",
     employee_name: "",
@@ -605,131 +606,153 @@ const getPaidStatus = (empId) => {
     width: "80%"
   }}
 >
-  {/* All Salaries */}
-  {view === "allSalaries" && (
-   <TableContainer component={Paper} elevation={3} style={{ width: "100%", height: "500px" }}>
-   <Divider
-  textAlign="center"
-  sx={{
-    marginY: 2,
-    "&::before, &::after": {
-      borderColor: "block",
-    },
-  }}
->
-  <Typography
-    variant="h6"
-    sx={{
-      color: "block",
-      fontWeight: "bold",
-      letterSpacing: "0.5px",
-    }}
+{/* All Salaries */}
+{view === "allSalaries" && (
+  <TableContainer
+    component={Paper}
+    elevation={3}
+    style={{ width: "100%", height: "500px" }}
   >
-    {dayjs(month, "YYYY-MM").format("MMMM YYYY")}
-  </Typography>
-</Divider>
+    {/* Styled Divider for Month & Year */}
+    <Divider
+      textAlign="center"
+      sx={{
+        marginY: 2,
+        "&::before, &::after": {
+          borderColor: "#1976d2",
+          borderWidth: "2px",
+        },
+      }}
+    >
+      <Box
+        sx={{
+          backgroundColor: "#1976d2",
+          color: "white",
+          px: 3,
+          py: 0.5,
+          borderRadius: "6px",
+          display: "inline-block",
+          fontWeight: "bold",
+          letterSpacing: "0.5px",
+          boxShadow: "0 2px 6px rgba(25, 118, 210, 0.3)",
+        }}
+      >
+        {dayjs(month, "YYYY-MM").format("MMMM YYYY")}
+      </Box>
+    </Divider>
 
-        <Table stickyHeader style={{ minWidth: "100%" }}>
-          <TableHead style={{ backgroundColor: "#f5f5f5" }}>
-            <TableRow>
-              <TableCell style={{ fontWeight: "bold" }}>Emp ID</TableCell>
-              <TableCell style={{ fontWeight: "bold" }}>Emp Name</TableCell>
-              <TableCell style={{ fontWeight: "bold" }}>Ctc</TableCell>
-              <TableCell style={{ fontWeight: "bold" }}>Take Home</TableCell>
-              <TableCell style={{ fontWeight: "bold" }}>Paid</TableCell>
-              <TableCell style={{ fontWeight: "bold" }}>Action</TableCell>
-            </TableRow>
-          </TableHead>
-       <TableBody>
-      
-
-  {filteredSalaries.length > 0 ? (
-    filteredSalaries.map((s) => {
-      // Check if salary has been paid for the current month
-      const salaryRecord = monthlySalaryData.find(
-        (m) => m.employee_id === s.employee_id && m.month === month
-      );
-
-      const isPaid = salaryRecord ? salaryRecord.paid : "No";
-
-      return (
-        <TableRow key={s._id || s.id} hover onClick={() => setSelectedSalary(s)}>
-          <TableCell>{s.employee_id}</TableCell>
-          <TableCell>{s.employee_name}</TableCell>
-          <TableCell>{formatCurrency(s.ctc)}</TableCell>
-          <TableCell>{formatCurrency(s.net_takehome)}</TableCell>
-         <TableCell style={{ textAlign: "start", fontWeight: "bold" }}>
-  <span
-    style={{
-      color: isPaid === "Yes" ? "green" : "indianred",
-      display: "inline-block",
-      animation: "heartbeat 1s infinite",
-      textShadow: isPaid === "Yes"
-        ? "0 0 5px green, 0 0 10px green"
-        : "0 0 5px red, 0 0 10px red",
-    }}
-  >
-    {isPaid === "Yes" ? "Yes" : "No"}
-  </span>
-
-  <style>
-    {`
-      @keyframes heartbeat {
-        0%, 100% {
-          transform: scale(1);
-        }
-        25%, 75% {
-          transform: scale(1.2);
-        }
-        50% {
-          transform: scale(1);
-        }
-      }
-    `}
-  </style>
-</TableCell>
-
-
-          <TableCell>
-           <Button
-  variant={isPaid === "Yes" ? "contained" : "outlined"}
-  color={isPaid === "Yes" ? "primary" : "secondary"}
-  onClick={(e) => {
-    e.stopPropagation(); // Prevent row click
-    if (isPaid === "No") {
-      monthlySalaryOpenDialog(s);
-    } else {
-      // Find the salary record from monthlySalaryData
-      const record = monthlySalaryData.find(
-        (m) => m.employee_id === s.employee_id && m.month === month
-      );
-      if (record) {
-        setSelectedSalaryRecord(record);
-        setViewMonthlySalaryModal(true);
-      }
-    }
-  }}
->
-  {isPaid === "Yes" ? "View" : "Pay"}
-</Button>
-
-
-          </TableCell>
+    <Table stickyHeader style={{ minWidth: "100%" }}>
+      <TableHead style={{ backgroundColor: "#f5f5f5" }}>
+        <TableRow>
+          <TableCell style={{ fontWeight: "bold" }}>Emp ID</TableCell>
+          <TableCell style={{ fontWeight: "bold" }}>Emp Name</TableCell>
+          <TableCell style={{ fontWeight: "bold" }}>CTC</TableCell>
+          <TableCell style={{ fontWeight: "bold" }}>Take Home</TableCell>
+          <TableCell style={{ fontWeight: "bold" }}>Paid</TableCell>
+          <TableCell style={{ fontWeight: "bold" }}>Action</TableCell>
         </TableRow>
-      );
-    })
-  ) : (
+      </TableHead>
+<TableBody>
+  {[
+    ...new Map(
+      monthlySalaryData
+        // ✅ Only paid salaries for selected month & year
+        .filter(
+          (m) =>
+            m.paid === "Yes" &&
+            dayjs(m.month, "YYYY-MM").isSame(dayjs(month, "YYYY-MM"), "month") &&
+            dayjs(m.month, "YYYY-MM").isSame(dayjs(month, "YYYY-MM"), "year")
+        )
+        // ✅ Remove duplicates by employee_id
+        .map((m) => [m.employee_id, m])
+    ).values(),
+  ].map((m) => {
+    // Find employee details
+    const employee = filteredSalaries.find(
+      (emp) => emp.employee_id === m.employee_id
+    );
+    if (!employee) return null;
+
+    return (
+      <TableRow
+        key={m._id || m.id}
+        hover
+        onClick={() => setSelectedSalary(m)}
+      >
+        <TableCell>{employee.employee_id}</TableCell>
+        <TableCell>{employee.employee_name}</TableCell>
+        <TableCell>{formatCurrency(employee.ctc)}</TableCell>
+        <TableCell>{formatCurrency(employee.net_takehome)}</TableCell>
+        <TableCell style={{ textAlign: "start", fontWeight: "bold" }}>
+          <span
+            style={{
+              color: "green",
+              display: "inline-block",
+              animation: "heartbeat 1s infinite",
+              textShadow: "0 0 5px green, 0 0 10px green",
+            }}
+          >
+            Yes
+          </span>
+          <style>
+            {`
+              @keyframes heartbeat {
+                0%, 100% { transform: scale(1); }
+                25%, 75% { transform: scale(1.2); }
+                50% { transform: scale(1); }
+              }
+            `}
+          </style>
+        </TableCell>
+        <TableCell>
+          <Button
+            variant="outlined"
+            color="primary"
+            onClick={(e) => {
+              e.stopPropagation();
+              monthlySalaryOpenDialog({
+                ...employee,
+                ...m,
+              });
+            }}
+          >
+            View
+          </Button>
+        </TableCell>
+      </TableRow>
+    );
+  })}
+
+  {/* ❌ Fallback when no records found */}
+  {[
+    ...new Map(
+      monthlySalaryData
+        .filter(
+          (m) =>
+            m.paid === "Yes" &&
+            dayjs(m.month, "YYYY-MM").isSame(dayjs(month, "YYYY-MM"), "month") &&
+            dayjs(m.month, "YYYY-MM").isSame(dayjs(month, "YYYY-MM"), "year")
+        )
+        .map((m) => [m.employee_id, m])
+    ).values(),
+  ].length === 0 && (
     <TableRow>
       <TableCell colSpan={6} align="center">
-        No records found
+        <Typography color="textSecondary" sx={{ py: 2 }}>
+          No paid salary records found for{" "}
+          {dayjs(month, "YYYY-MM").format("MMMM YYYY")}
+        </Typography>
       </TableCell>
     </TableRow>
   )}
 </TableBody>
 
-        </Table>
-      </TableContainer>  
-  )}
+
+
+    </Table>
+  </TableContainer>
+)}
+
 
   {/* Dialog to View Monthly Salaries */}
   <Dialog
