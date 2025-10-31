@@ -173,6 +173,7 @@ const monthlySalaryHandleSubmit = async () => {
   }
 };
 
+
  const getMonthYearLabel = (value) => {
     if (!value) return "All Months";
     const date = new Date(value + "-01");
@@ -740,7 +741,6 @@ const getPaidStatus = (empId) => {
     </TableRow>
   )}
 </TableBody>
-
 
 
 
