@@ -233,20 +233,6 @@ const filteredSalaries = allEmployees.flatMap((emp) => {
     (m) => m.employee_id === emp.employee_id && m.month === filterMonthYear
   );
 
-  // ✅ Fix: Always show *all pending months up to selected month*
-  if (view === "pendingSalaries") {
-    if (pendingMonths.length === 0) return [];
-    return pendingMonths.map((m) => ({
-      ...emp,
-      month: m,
-      paid: "No",
-      paid_amount: 0,
-      net_takehome: parseFloat(baseSalary.net_takehome || 0),
-      ctc: parseFloat(baseSalary.ctc || 0),
-    }));
-  }
-
-  // ✅ Paid salaries view (same as before)
   if (view === "paidSalaries") {
     const currentPaid = monthlySalaryData.find(
       (m) => m.employee_id === emp.employee_id && m.month === filterMonthYear
@@ -268,33 +254,17 @@ const filteredSalaries = allEmployees.flatMap((emp) => {
     ];
   }
 
-  if (view === "pendingSalaries") {
-    return pendingMonths.map((m) => ({
-      ...emp,
-      month: m,
-      paid: "No",
-      paid_amount: 0,
-      net_takehome: parseFloat(baseSalary.net_takehome || 0),
-      ctc: parseFloat(baseSalary.ctc || 0),
-    }));
-  }
-
-  const salaryRecord = monthlySalaryData.find(
-    (m) => m.employee_id === emp.employee_id && m.month === filterMonthYear
-  );
-
-  return [
-    {
-      ...emp,
-      month: filterMonthYear,
-      paid: salaryRecord ? "Yes" : "No",
-      paid_amount: salaryRecord ? parseFloat(salaryRecord.paid_amount || 0) : 0,
-      net_takehome: parseFloat(baseSalary.net_takehome || 0),
-      ctc: parseFloat(baseSalary.ctc || 0),
-    },
-  ];
+  // For pending salaries (default)
+  const pendingMonths = monthsBetween.filter((m) => !paidMonths.includes(m));
+  return pendingMonths.map((month) => ({
+    ...emp,
+    month,
+    paid: "No",
+    paid_amount: 0,
+    net_takehome: parseFloat(baseSalary.net_takehome || 0),
+    ctc: parseFloat(baseSalary.ctc || 0),
+  }));
 });
-
 
 
 
@@ -616,7 +586,11 @@ const getPaidStatus = (empId) => {
             />
           </div>
         )}
-      </div>    
+      </div>
+
+
+
+      
     </div>
 <div
   style={{
@@ -634,6 +608,27 @@ const getPaidStatus = (empId) => {
   {/* All Salaries */}
   {view === "allSalaries" && (
    <TableContainer component={Paper} elevation={3} style={{ width: "100%", height: "500px" }}>
+   <Divider
+  textAlign="center"
+  sx={{
+    marginY: 2,
+    "&::before, &::after": {
+      borderColor: "block",
+    },
+  }}
+>
+  <Typography
+    variant="h6"
+    sx={{
+      color: "block",
+      fontWeight: "bold",
+      letterSpacing: "0.5px",
+    }}
+  >
+    {dayjs(month, "YYYY-MM").format("MMMM YYYY")}
+  </Typography>
+</Divider>
+
         <Table stickyHeader style={{ minWidth: "100%" }}>
           <TableHead style={{ backgroundColor: "#f5f5f5" }}>
             <TableRow>
@@ -924,10 +919,29 @@ const getPaidStatus = (empId) => {
 {/* Paid Salaries */}
 {view === "paidSalaries" && (
   <TableContainer component={Paper} elevation={3} style={{ width: "100%", height: "100%" }}>
+    <Divider
+  textAlign="center"
+  sx={{
+    marginY: 2,
+    "&::before, &::after": {
+      borderColor: "block",
+    },
+  }}
+>
+  <Typography
+    variant="h6"
+    sx={{
+      color: "block",
+      fontWeight: "bold",
+      letterSpacing: "0.5px",
+    }}
+  >
+    {dayjs(month, "YYYY-MM").format("MMMM YYYY")}
+  </Typography>
+</Divider>
+
     <Table stickyHeader style={{ minWidth: "100%" }}>
       <TableHead style={{ backgroundColor: "#f5f5f5" }}>
-                   
-
         <TableRow>
           <TableCell style={{ fontWeight: "bold" }}>Emp ID</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>Emp Name</TableCell>
@@ -986,6 +1000,27 @@ const getPaidStatus = (empId) => {
 {/* Pending Salaries */}
 {view === "pendingSalaries" && (
   <TableContainer component={Paper} elevation={3} style={{ width: "100%", height: "100%" }}>
+    <Divider
+  textAlign="center"
+  sx={{
+    marginY: 2,
+    "&::before, &::after": {
+      borderColor: "block",
+    },
+  }}
+>
+  <Typography
+    variant="h6"
+    sx={{
+      color: "block",
+      fontWeight: "bold",
+      letterSpacing: "0.5px",
+    }}
+  >
+    {dayjs(month, "YYYY-MM").format("MMMM YYYY")}
+  </Typography>
+</Divider>
+
     <Table stickyHeader style={{ minWidth: "100%" }}>
       <TableHead style={{ backgroundColor: "#f5f5f5" }}>
         <TableRow>
