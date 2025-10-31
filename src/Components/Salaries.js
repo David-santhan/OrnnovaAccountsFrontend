@@ -653,99 +653,95 @@ const getPaidStatus = (empId) => {
         </TableRow>
       </TableHead>
 <TableBody>
-  {[
-    ...new Map(
-      monthlySalaryData
-        // ✅ Only paid salaries for selected month & year
-        .filter(
-          (m) =>
-            m.paid === "Yes" &&
-            dayjs(m.month, "YYYY-MM").isSame(dayjs(month, "YYYY-MM"), "month") &&
-            dayjs(m.month, "YYYY-MM").isSame(dayjs(month, "YYYY-MM"), "year")
-        )
-        // ✅ Remove duplicates by employee_id
-        .map((m) => [m.employee_id, m])
-    ).values(),
-  ].map((m) => {
-    // Find employee details
-    const employee = filteredSalaries.find(
-      (emp) => emp.employee_id === m.employee_id
-    );
-    if (!employee) return null;
+  {[...new Map(filteredSalaries.map((e) => [e.employee_id, e])).values()].map(
+    (emp) => {
+      // ✅ Find salary record for this employee & selected month/year
+      const salaryRecord = monthlySalaryData.find(
+        (m) =>
+          m.employee_id === emp.employee_id &&
+          dayjs(m.month, "YYYY-MM").isSame(dayjs(month, "YYYY-MM"), "month") &&
+          dayjs(m.month, "YYYY-MM").isSame(dayjs(month, "YYYY-MM"), "year")
+      );
 
-    return (
-      <TableRow
-        key={m._id || m.id}
-        hover
-        onClick={() => setSelectedSalary(m)}
-      >
-        <TableCell>{employee.employee_id}</TableCell>
-        <TableCell>{employee.employee_name}</TableCell>
-        <TableCell>{formatCurrency(employee.ctc)}</TableCell>
-        <TableCell>{formatCurrency(employee.net_takehome)}</TableCell>
-        <TableCell style={{ textAlign: "start", fontWeight: "bold" }}>
-          <span
-            style={{
-              color: "green",
-              display: "inline-block",
-              animation: "heartbeat 1s infinite",
-              textShadow: "0 0 5px green, 0 0 10px green",
-            }}
-          >
-            Yes
-          </span>
-          <style>
-            {`
-              @keyframes heartbeat {
-                0%, 100% { transform: scale(1); }
-                25%, 75% { transform: scale(1.2); }
-                50% { transform: scale(1); }
-              }
-            `}
-          </style>
-        </TableCell>
-        <TableCell>
-          <Button
-            variant="outlined"
-            color="primary"
-            onClick={(e) => {
-              e.stopPropagation();
-              monthlySalaryOpenDialog({
-                ...employee,
-                ...m,
-              });
-            }}
-          >
-            View
-          </Button>
-        </TableCell>
-      </TableRow>
-    );
-  })}
+      const paidStatus = salaryRecord ? salaryRecord.paid : "No";
 
-  {/* ❌ Fallback when no records found */}
-  {[
-    ...new Map(
-      monthlySalaryData
-        .filter(
-          (m) =>
-            m.paid === "Yes" &&
-            dayjs(m.month, "YYYY-MM").isSame(dayjs(month, "YYYY-MM"), "month") &&
-            dayjs(m.month, "YYYY-MM").isSame(dayjs(month, "YYYY-MM"), "year")
-        )
-        .map((m) => [m.employee_id, m])
-    ).values(),
-  ].length === 0 && (
+      return (
+        <TableRow
+          key={emp.employee_id}
+          hover
+          onClick={() =>
+            setSelectedSalary({
+              ...emp,
+              ...(salaryRecord || {}),
+            })
+          }
+        >
+          <TableCell>{emp.employee_id}</TableCell>
+          <TableCell>{emp.employee_name}</TableCell>
+          <TableCell>{formatCurrency(emp.ctc)}</TableCell>
+          <TableCell>{formatCurrency(emp.net_takehome)}</TableCell>
+
+          {/* ✅ Paid / Not Paid indicator */}
+          <TableCell style={{ textAlign: "start", fontWeight: "bold" }}>
+            <span
+              style={{
+                color: paidStatus === "Yes" ? "green" : "red",
+                display: "inline-block",
+                animation:
+                  paidStatus === "Yes" ? "heartbeat 1s infinite" : "none",
+                textShadow:
+                  paidStatus === "Yes"
+                    ? "0 0 5px green, 0 0 10px green"
+                    : "0 0 5px red, 0 0 10px red",
+              }}
+            >
+              {paidStatus}
+            </span>
+            <style>
+              {`
+                @keyframes heartbeat {
+                  0%, 100% { transform: scale(1); }
+                  25%, 75% { transform: scale(1.2); }
+                  50% { transform: scale(1); }
+                }
+              `}
+            </style>
+          </TableCell>
+
+          <TableCell>
+            <Button
+              variant="outlined"
+              color="primary"
+              onClick={(e) => {
+                e.stopPropagation();
+                monthlySalaryOpenDialog({
+                  ...emp,
+                  ...(salaryRecord || {}),
+                });
+              }}
+            >
+              View
+            </Button>
+          </TableCell>
+        </TableRow>
+      );
+    }
+  )}
+
+  {/* ❌ No employee fallback */}
+  {filteredSalaries.length === 0 && (
     <TableRow>
       <TableCell colSpan={6} align="center">
         <Typography color="textSecondary" sx={{ py: 2 }}>
-          No paid salary records found for{" "}
+          No employee records found for{" "}
           {dayjs(month, "YYYY-MM").format("MMMM YYYY")}
         </Typography>
       </TableCell>
     </TableRow>
   )}
 </TableBody>
+
+
 
 
 
