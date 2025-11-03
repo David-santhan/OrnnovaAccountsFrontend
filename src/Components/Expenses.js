@@ -119,22 +119,20 @@ const handleAddExpense = async () => {
   }
 };
 
-// Mark Paid API
 const handleMarkAsPaid = async (expenseId) => {
   if (!paidDate || !paidAmount) {
     alert("⚠️ Please enter both Paid Date and Amount Paid.");
     return;
   }
 
-  // Extract only the number from expenseId
-  const numericExpenseId = parseInt(expenseId.replace(/\D/g, ""), 10); // "E9" => 9
+  const numericExpenseId = parseInt(expenseId.replace(/\D/g, ""), 10);
 
   try {
     const response = await fetch("http://localhost:7760/pay-expense", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        expense_id: numericExpenseId, // send only number
+        expense_id: numericExpenseId,
         paid_amount: paidAmount,
         paid_date: paidDate,
       }),
@@ -143,14 +141,27 @@ const handleMarkAsPaid = async (expenseId) => {
     const data = await response.json();
 
     if (response.ok) {
-      alert("✅ Payment recorded successfully!");
+      // ✅ Close modal and clear fields
       setOpenPayDialog(false);
       setPayExpense(null);
       setPaidDate("");
       setPaidAmount("");
-      fetchExpenses();
+
+      // ✅ Show success toast/snackbar
+      setSnackbarMessage(data.message || "✅ Payment recorded successfully!");
+      setSnackbarOpen(true);
+
+      // ✅ Refetch updated expense list
+      const refreshed = await fetchExpenses(selectedMonthYear);
+
+      // ✅ Update state with new data
+      if (refreshed && Array.isArray(refreshed)) {
+        setExpenses(refreshed);
+        handleApplyFilterWithData(refreshed);
+      }
+
     } else {
-      alert(`❌ Error: ${data.error || "Failed to record payment"}`);
+      alert(`❌ Error: ${data.message || "Failed to record payment"}`);
     }
   } catch (err) {
     console.error("❌ Error while paying expense:", err);
