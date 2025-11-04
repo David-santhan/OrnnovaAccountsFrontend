@@ -504,11 +504,15 @@ const handleSaveReceived = async () => {
 
     setReceivedModalOpen(false);
     setEditingReceivedInvoice(null);
+
+    // ✅ Show success alert
+    alert("Received status updated successfully!");
   } catch (err) {
     console.error("Error updating received status:", err);
     alert("Failed to update received status.");
   }
 };
+
 
 useEffect(() => {
   if (selectedClient && newInvoice.invoice_value) {
@@ -1473,7 +1477,7 @@ useEffect(() => {
   maxWidth="xs"
   fullWidth
 >
-  <DialogTitle style={{fontWeight:"bold",fontFamily:"monospace"}}>Edit Received Status</DialogTitle> <Divider/>
+  <DialogTitle style={{fontWeight:"bold",fontFamily:"monospace"}}>Received Status</DialogTitle> <Divider/>
   <DialogContent>
     {editingReceivedInvoice && (
       <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
