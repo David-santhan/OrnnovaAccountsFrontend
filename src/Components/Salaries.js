@@ -301,11 +301,13 @@ const totalAll = filteredSalaries.reduce(
   useEffect(() => {
     fetchSalaries();
   }, []);
+
 const fetchPendingSummary = async () => {
   try {
     const res = await axios.get("http://localhost:7760/api/pending-salaries");
     if (res.data.success) {
       setPendingSummary(res.data.data);
+      console.log(res.data.data)
     } else {
       setPendingSummary([]);
     }
