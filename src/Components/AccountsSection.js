@@ -17,11 +17,15 @@ import {
   TableCell,
   TableBody,
   Stack,
-  IconButton,
+  IconButton,Dialog,DialogTitle,DialogContent,DialogActions
 } from "@mui/material";
 import AccountBalanceIcon from "@mui/icons-material/AccountBalance";
 import CloseIcon from "@mui/icons-material/Close";
 import axios from "axios";
+import jsPDF from "jspdf";
+import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
+
 
 const AccountsSection = () => {
   const [accounts, setAccounts] = useState([]);
@@ -39,6 +43,7 @@ const AccountsSection = () => {
   const [toAccount, setToAccount] = useState("");
   const [transferDesc, setTransferDesc] = useState("");
   const [accountNumber,setAccountNumber] = useState("");
+  const [openTransactionDialog, setOpenTransactionDialog] = useState(false);
   const [newAccount, setNewAccount] = useState({
     account_number: "",
     account_name: "",
@@ -174,6 +179,43 @@ const AccountsSection = () => {
       alert(err.response?.data?.error || "Transfer failed");
     }
   };
+const handleDownloadPDF = () => {
+  const doc = new jsPDF();
+
+  // 🧾 Optional: Add a custom title
+  doc.setFontSize(16);
+  doc.text("Transaction History", 14, 15);
+
+  // Table columns (headers)
+  const tableColumn = ["Transaction ID", "Type", "Description", "Amount (₹)", "Date"];
+
+  // Table rows (data)
+  const tableRows = transactions.map((t) => [
+    t.transaction_id,
+    t.type,
+    t.description,
+    `₹${t.amount}`,
+    new Date(t.created_at).toLocaleString(),
+  ]);
+
+  // 🟢 Here's where you use your styled autoTable
+  autoTable(doc, {
+    head: [tableColumn],
+    body: tableRows,
+    startY: 25, // space after title
+    theme: "grid", // adds borders to cells
+    headStyles: { fillColor: [25, 118, 210] }, // MUI blue
+    styles: { fontSize: 10, cellPadding: 3 },
+    alternateRowStyles: { fillColor: [240, 240, 240] }, // light gray alternate
+  });
+
+  // Footer note or signature (optional)
+  const date = new Date().toLocaleString();
+  doc.text(`Generated on: ${date}`, 14, doc.lastAutoTable.finalY + 10);
+
+  // Save the PDF
+  doc.save("Transaction_History.pdf");
+};
 
   return (
     <Box sx={{ p: 4 }}>
@@ -238,7 +280,7 @@ const AccountsSection = () => {
       </Grid>
 
       {/* Account Modal */}
-      <Modal open={open} onClose={handleClose}>
+     <Modal open={open} onClose={handleClose}>
         <Paper
           elevation={6}
           sx={{
@@ -291,7 +333,6 @@ const AccountsSection = () => {
 
                 <Divider sx={{ my: 2 }} />
 
-                {/* Buttons */}
                 <Stack spacing={2}>
                   <Button
                     variant={showBalance ? "contained" : "outlined"}
@@ -305,7 +346,7 @@ const AccountsSection = () => {
                     variant={showTransactions ? "contained" : "outlined"}
                     color="primary"
                     fullWidth
-                    onClick={handleShowTransactions}
+                    onClick={() => {handleShowTransactions();setOpenTransactionDialog(true)}} // ✅ open dialog here
                   >
                     {loading ? "Loading..." : "View Transactions"}
                   </Button>
@@ -323,6 +364,7 @@ const AccountsSection = () => {
 
             {/* Right Dynamic Panel */}
             <Grid item xs={12} md={8}>
+              {/* Show Balance */}
               {showBalance && (
                 <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
                   <Typography
@@ -355,64 +397,7 @@ const AccountsSection = () => {
                 </Paper>
               )}
 
-              {showTransactions && (
-                <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
-                  <Typography
-                    variant="h6"
-                    mb={2}
-                    textAlign="center"
-                    color="primary"
-                    fontWeight="bold"
-                  >
-                    Transaction History
-                  </Typography>
-                  <Box sx={{ maxHeight: "300px", overflowY: "auto" }}>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow sx={{ backgroundColor: "#f3f4f6" }}>
-                          <TableCell>ID</TableCell>
-                          <TableCell>Type</TableCell>
-                          <TableCell>Description</TableCell>
-                          <TableCell>Amount</TableCell>
-                          {/* <TableCell>Module</TableCell> */}
-                          <TableCell>Date</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {transactions.length > 0 ? (
-                          transactions.map((t) => (
-                            <TableRow key={t.transaction_id}>
-                              <TableCell>{t.transaction_id}</TableCell>
-                              <TableCell
-                                sx={{
-                                  color:
-                                    t.type === "Incoming" ? "green" : "red",
-                                  fontWeight: "bold",
-                                }}
-                              >
-                                {t.type}
-                              </TableCell>
-                              <TableCell>{t.description}</TableCell>
-                              <TableCell>₹{t.amount}</TableCell>
-                              {/* <TableCell>{t.related_module}</TableCell> */}
-                              <TableCell>
-                                {new Date(t.created_at).toLocaleString()}
-                              </TableCell>
-                            </TableRow>
-                          ))
-                        ) : (
-                          <TableRow>
-                            <TableCell colSpan={6} align="center">
-                              No transactions found.
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </Box>
-                </Paper>
-              )}
-
+              {/* Transfer Section */}
               {showTransfer && (
                 <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
                   <Typography
@@ -458,6 +443,113 @@ const AccountsSection = () => {
           </Grid>
         </Paper>
       </Modal>
+
+      {/* 🧾 TRANSACTION HISTORY DIALOG */}
+      <Dialog
+        open={openTransactionDialog}
+        onClose={() => setOpenTransactionDialog(false)}
+        maxWidth="xl"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: "bold", textAlign: "center" }}>
+          Transaction History
+        </DialogTitle>
+
+        <DialogContent>
+          <Paper elevation={2} sx={{ p: 2, borderRadius: 2 }}>
+            <Box sx={{ maxHeight: 350, overflowY: "auto" }}>
+             <Table size="small">
+  <TableHead>
+    <TableRow sx={{ backgroundColor: "#f3f4f6" }}>
+      <TableCell style={{fontWeight:"bold"}}>Transaction ID</TableCell>
+      <TableCell style={{fontWeight:"bold"}} >Type</TableCell>
+      <TableCell style={{fontWeight:"bold"}} >Description</TableCell>
+      <TableCell style={{fontWeight:"bold"}}  align="right">Amount</TableCell>
+      <TableCell style={{fontWeight:"bold"}}  align="right">Previous Balance</TableCell>
+      <TableCell style={{fontWeight:"bold"}}  align="right">Updated Balance</TableCell>
+      <TableCell style={{fontWeight:"bold"}} >Date</TableCell>
+    </TableRow>
+  </TableHead>
+
+  <TableBody>
+    {transactions.length > 0 ? (
+      transactions.map((t) => (
+        <TableRow key={t.transaction_id}>
+          {/* Transaction ID */}
+          <TableCell>{t.transaction_id}</TableCell>
+
+          {/* Type (color-coded) */}
+          <TableCell
+            sx={{
+              color:
+                t.type === "Credit"
+                  ? "green"
+                  : t.type === "Debit"
+                  ? "red"
+                  : "inherit",
+              fontWeight: "bold",
+            }}
+          >
+            {t.type}
+          </TableCell>
+
+          {/* Description */}
+          <TableCell>{t.description}</TableCell>
+
+          {/* Amount */}
+          <TableCell align="right">₹{Number(t.amount).toFixed(2)}</TableCell>
+
+          {/* Previous Balance */}
+          <TableCell align="right">
+            ₹{Number(t.previous_balance || 0).toFixed(2)}
+          </TableCell>
+
+          {/* Updated Balance */}
+          <TableCell align="right">
+            ₹{Number(t.updated_balance || 0).toFixed(2)}
+          </TableCell>
+
+          {/* Date */}
+          <TableCell>
+            {new Date(t.created_at).toLocaleString("en-IN", {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
+          </TableCell>
+        </TableRow>
+      ))
+    ) : (
+      <TableRow>
+        <TableCell colSpan={7} align="center">
+          No transactions found.
+        </TableCell>
+      </TableRow>
+    )}
+  </TableBody>
+</Table>
+
+            </Box>
+          </Paper>
+        </DialogContent>
+
+        <DialogActions sx={{ justifyContent: "space-between", px: 3 }}>
+          <Button
+            variant="outlined"
+            color="secondary"
+            onClick={() => setOpenTransactionDialog(false)}
+          >
+            Close
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleDownloadPDF}
+            disabled={transactions.length === 0}
+          >
+            Download PDF
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Create Account Modal */}
       <Modal open={openCreate} onClose={() => setOpenCreate(false)}>
