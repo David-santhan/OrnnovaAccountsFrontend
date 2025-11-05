@@ -15,6 +15,8 @@ function Salaries() {
   const [openDialog, setOpenDialog] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [selectedSalary, setSelectedSalary] = useState(null);
+  const [selectedAccountNumber, setSelectedAccountNumber] = useState("");
+
   
   const [newSalary, setNewSalary] = useState({
     employee_id: "",
@@ -158,14 +160,15 @@ const monthlySalaryHandleSubmit = async () => {
       lop: parseFloat(monthlySalaryFormData.lop) || 0,
       paidAmount: parseFloat(monthlySalaryFormData.paidAmount) || 0,
       actualToPay: parseFloat(monthlySalaryFormData.actualToPay) || 0,
+      accountNumber: selectedAccountNumber, // 👈 Add this
     });
 
     if (response.data.success) {
       alert("Salary saved successfully!");
-      monthlySalaryCloseDialog(); // close dialog
+      monthlySalaryCloseDialog();
       fetchAllMonthlySalaries();
     } else {
-      alert("Failed to save salary");
+      alert(response.data.message || "Failed to save salary");
     }
   } catch (error) {
     console.error(error);
@@ -292,22 +295,21 @@ const totalAll = filteredSalaries.reduce(
 
 
   // ✅ Fetch salaries
-  const fetchSalaries = async () => {
-    const res = await fetch("http://localhost:7760/getallsalaries");
-    const data = await res.json();
-    setSalaries(Array.isArray(data) ? data : []);
-  };
+ const fetchSalaries = async () => {
+  const res = await fetch("http://localhost:7760/getallsalaries");
+  const data = await res.json();
+  setMonthlySalaryData(Array.isArray(data) ? data : []); // <--- use correct setter
+};
+
 
   useEffect(() => {
     fetchSalaries();
   }, []);
-
 const fetchPendingSummary = async () => {
   try {
     const res = await axios.get("http://localhost:7760/api/pending-salaries");
     if (res.data.success) {
       setPendingSummary(res.data.data);
-      console.log(res.data.data)
     } else {
       setPendingSummary([]);
     }
@@ -673,10 +675,13 @@ const getPaidStatus = (empId) => {
           key={emp.employee_id}
           hover
           onClick={() =>
+          {
             setSelectedSalary({
               ...emp,
               ...(salaryRecord || {}),
-            })
+            });
+            console.log(salaryRecord)
+          }
           }
         >
           <TableCell>{emp.employee_id}</TableCell>
@@ -685,57 +690,47 @@ const getPaidStatus = (empId) => {
           <TableCell>{formatCurrency(emp.net_takehome)}</TableCell>
 
           {/* ✅ Paid / Not Paid indicator */}
-         <TableCell style={{ textAlign: "start", fontWeight: "bold" }}>
-  <span
-    style={{
-      color: paidStatus === "Yes" ? "green" : "red",
-      display: "inline-block",
-      animation: paidStatus === "Yes" ? "heartbeat 1s infinite" : "none",
-      textShadow:
-        paidStatus === "Yes"
-          ? "0 0 5px green, 0 0 10px green"
-          : "0 0 5px red, 0 0 10px red",
-    }}
-  >
-    {paidStatus}
-  </span>
-  <style>
-    {`
-      @keyframes heartbeat {
-        0%, 100% { transform: scale(1); }
-        25%, 75% { transform: scale(1.2); }
-        50% { transform: scale(1); }
-      }
-    `}
-  </style>
-</TableCell>
+          <TableCell style={{ textAlign: "start", fontWeight: "bold" }}>
+            <span
+              style={{
+                color: paidStatus === "Yes" ? "green" : "red",
+                display: "inline-block",
+                animation:
+                  paidStatus === "Yes" ? "heartbeat 1s infinite" : "none",
+                textShadow:
+                  paidStatus === "Yes"
+                    ? "0 0 5px green, 0 0 10px green"
+                    : "0 0 5px red, 0 0 10px red",
+              }}
+            >
+              {paidStatus}
+            </span>
+            <style>
+              {`
+                @keyframes heartbeat {
+                  0%, 100% { transform: scale(1); }
+                  25%, 75% { transform: scale(1.2); }
+                  50% { transform: scale(1); }
+                }
+              `}
+            </style>
+          </TableCell>
 
-<TableCell>
-  <Button
-    variant="outlined"
-    color={paidStatus === "Yes" ? "primary" : "success"}
-    onClick={(e) => {
-      e.stopPropagation();
-      if (paidStatus === "Yes") {
-        // ✅ Open View Modal
-        setSelectedSalaryRecord({
-          ...emp,
-          ...(salaryRecord || {}),
-        });
-        setViewMonthlySalaryModal(true);
-      } else {
-        // ✅ Handle Pay Logic
-        monthlySalaryOpenDialog({
-          ...emp,
-          ...(salaryRecord || {}),
-        });
-      }
-    }}
-  >
-    {paidStatus === "Yes" ? "View" : "Pay"}
-  </Button>
-</TableCell>
-
+          <TableCell>
+            <Button
+              variant="outlined"
+              color="primary"
+              onClick={(e) => {
+                e.stopPropagation();
+                monthlySalaryOpenDialog({
+                  ...emp,
+                  ...(salaryRecord || {}),
+                });
+              }}
+            >
+              View
+            </Button>
+          </TableCell>
         </TableRow>
       );
     }
