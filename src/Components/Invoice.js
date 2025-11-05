@@ -428,14 +428,14 @@ const formatDate = (dateString) => {
 
 // Auto-calculate invoice value and GST whenever relevant data changes
 useEffect(() => {
-  if (!selectedProject) return;
+  if (!selectedProject || !selectedClient) return;
 
-  const cycle = selectedProject.invoiceCycle || newInvoice.invoice_cycle || "Monthly";
-  const gstPercentage = selectedClient?.gstPercentage || 0;
+  const cycle = selectedProject.invoiceCycle || "Monthly";
+  const gstPercentage = selectedClient.gstPercentage || 0;
 
   const { invoiceValue, gstAmount } = calculateInvoiceValue(
     cycle,
-    newInvoice.billable_days,
+    selectedProject.billable_days || 0,
     selectedProject,
     gstPercentage
   );
@@ -446,9 +446,10 @@ useEffect(() => {
     invoice_value: invoiceValue,
     gst_amount: gstAmount,
   }));
-}, [selectedProject, newInvoice.billable_days, selectedClient]);
+}, [selectedClient, selectedProject]);
 
-// Save edited Invoice
+
+// Save edited Invoice newInvoice.billable_days,
 const handleSaveInvoice = async (updatedInvoice) => {
   try {
     const res = await fetch(`http://localhost:7760/invoices/${updatedInvoice.id}`, {
@@ -779,7 +780,7 @@ useEffect(() => {
                 </TableCell>
                 <TableCell>
                   {!proj.invoice_date ? (
-                  <Button
+<Button
   variant="contained"
   color="secondary"
   size="small"
@@ -796,13 +797,7 @@ useEffect(() => {
     const month = String(now.getMonth() + 1).padStart(2, "0");
     const year = now.getFullYear();
 
-    // Calculate GST
-    const invoiceValue = proj.invoice_value || 0;
-    const gstAmount = client?.gstPercentage
-      ? (invoiceValue * client.gstPercentage) / 100
-      : 0;
-
-    // Pre-fill invoice
+    // Prepare base invoice data — GST will be auto-calculated later by useEffect
     const invoiceData = {
       ...initialInvoiceState,
       client_name: proj.clientName?.trim() || "",
@@ -810,8 +805,8 @@ useEffect(() => {
       invoice_number: `${proj.clientName?.trim() || "Client"}-${proj.projectID}-${month}${year}`,
       start_date: proj.startDate || "",
       end_date: proj.endDate || "",
-      invoice_value: invoiceValue,
-      gst_amount: gstAmount,
+      invoice_value: proj.invoice_value || 0,
+      gst_amount: 0, // placeholder — auto-updated via useEffect
       due_date: proj.due_date || "",
       invoice_cycle: proj.invoice_cycle || "",
       billable_days: proj.billable_days || "",
@@ -819,19 +814,14 @@ useEffect(() => {
     };
 
     setNewInvoice(invoiceData);
-
-    // Mark as raised
     setIsRaised(true);
-
-    // Open dialog
     setOpenDialog(true);
-
-    // Call handleRaise with the filled invoiceData
-    handleRaise(invoiceData);
   }}
 >
   Raise
 </Button>
+
+
 
                   ) : (
                     <Button
@@ -1705,56 +1695,81 @@ useEffect(() => {
 ) : (
   // ✅ Editable Project ID dropdown
   <TextField
-    select
-    fullWidth
-    label="Project ID"
-    name="project_id"
-    value={newInvoice.project_id}
-    sx={{
-      "& .MuiOutlinedInput-root": {
-        "& fieldset": { borderColor: "black" },
-        "&:hover fieldset": { borderColor: "black" },
-        "&.Mui-focused fieldset": { borderColor: "black" },
-      },
-    }}
-    onChange={async (e) => {
-      const projectID = e.target.value;
+  select
+  fullWidth
+  label="Project ID"
+  name="project_id"
+  value={newInvoice.project_id}
+  sx={{
+    "& .MuiOutlinedInput-root": {
+      "& fieldset": { borderColor: "black" },
+      "&:hover fieldset": { borderColor: "black" },
+      "&.Mui-focused fieldset": { borderColor: "black" },
+    },
+  }}
+  onChange={async (e) => {
+    const projectID = e.target.value;
 
-      setNewInvoice((prev) => {
-        const now = new Date();
-        const month = String(now.getMonth() + 1).padStart(2, "0");
-        const year = now.getFullYear();
-        const invoiceNumber = prev.client_name
-          ? `${prev.client_name}-${projectID}-${month}${year}`
-          : prev.invoice_number;
+    // 🔹 Update project_id and generate invoice number
+    setNewInvoice((prev) => {
+      const now = new Date();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const year = now.getFullYear();
+      const invoiceNumber = prev.client_name
+        ? `${prev.client_name}-${projectID}-${month}${year}`
+        : prev.invoice_number;
 
-        return {
-          ...prev,
-          project_id: projectID,
-          invoice_number: invoiceNumber,
-        };
-      });
+      return {
+        ...prev,
+        project_id: projectID,
+        invoice_number: invoiceNumber,
+      };
+    });
 
-      try {
-        const res = await fetch(`http://localhost:7760/getProject/${projectID}`);
-        if (!res.ok) throw new Error("Failed to fetch project");
-        const projectData = await res.json();
-        setSelectedProject(projectData); // useEffect will auto-calc GST & invoice value
-      } catch (err) {
-        console.error("Error fetching project:", err);
-      }
-    }}
-  >
-    {projects.length > 0 ? (
-      projects.map((p) => (
-        <MenuItem key={p.projectID} value={p.projectID}>
-          {p.projectName} - {p.projectID}
-        </MenuItem>
-      ))
-    ) : (
-      <MenuItem disabled>No projects found</MenuItem>
-    )}
-  </TextField>
+    try {
+      // 🔹 Fetch project details
+      const res = await fetch(`http://localhost:7760/getProject/${projectID}`);
+      if (!res.ok) throw new Error("Failed to fetch project");
+      const projectData = await res.json();
+
+      // 🔹 Store selected project
+      setSelectedProject(projectData);
+
+      // 🧮 Immediately calculate GST and invoice value
+      const cycle = projectData.invoiceCycle || "Monthly";
+      const gstPercentage = selectedClient?.gstPercentage || 0;
+
+      // Assuming your helper function exists
+      const { invoiceValue, gstAmount } = calculateInvoiceValue(
+        cycle,
+        newInvoice.billable_days,
+        projectData,
+        gstPercentage
+      );
+
+      // 🔹 Update invoice values immediately
+      setNewInvoice((prev) => ({
+        ...prev,
+        invoice_cycle: cycle,
+        invoice_value: invoiceValue,
+        gst_amount: gstAmount,
+      }));
+    } catch (err) {
+      console.error("Error fetching project:", err);
+    }
+  }}
+>
+  {projects.length > 0 ? (
+    projects.map((p) => (
+      <MenuItem key={p.projectID} value={p.projectID}>
+        {p.projectName} - {p.projectID}
+      </MenuItem>
+    ))
+  ) : (
+    <MenuItem disabled>No projects found</MenuItem>
+  )}
+</TextField>
+
 )}
 
 

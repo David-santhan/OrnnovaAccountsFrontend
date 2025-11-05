@@ -45,11 +45,13 @@ import QueryStatsIcon from '@mui/icons-material/QueryStats';
 import RequestQuoteIcon from '@mui/icons-material/RequestQuote';
 import Employees from "./Employees";
 import Salaries from "./Salaries";
-import Forecasts from "./Forcasts";
+import ForecastDashboard from "./ForecastDashboard";
 import Invoice from "./Invoice";
 import SaveIcon from '@mui/icons-material/Save';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+
+
 const menuItems = [
   { text: "Accounts", icon: <AccountBalanceIcon /> },
   { text: "Clients", icon: <PeopleIcon /> },
@@ -786,7 +788,7 @@ const handleClientCancel = () => {
   
   {selected === "Invoice" && <Invoice/>}
 
-  {selected === "Forcasting" && <Forecasts/>}
+  {selected === "Forcasting" && <ForecastDashboard />}
 
   {selected === "Expenses" && <Expenses/>}
 
