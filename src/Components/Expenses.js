@@ -172,7 +172,7 @@ const handleMarkAsPaid = async (expenseId) => {
 // Updated filter function that accepts data
 const handleApplyFilterWithData = (data) => {
   let filtered = data;
-
+    
   // 🔹 Filter by Regular
   if (filterRegular !== "all") {
     filtered = filtered.filter((exp) => exp.regular === filterRegular);
@@ -347,7 +347,7 @@ const handleSaveChanges = async () => {
     <Button
       variant="outlined"
       color="warning"
-      onClick={() => handleApplyFilterWithData(expenses)}
+      onClick={() => {handleApplyFilterWithData(expenses);}}
     >
       Search
     </Button>
