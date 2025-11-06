@@ -479,6 +479,41 @@ const handleSaveInvoice = async (updatedInvoice) => {
   }
 };
 // Updating Recieved Status
+// const handleSaveReceived = async () => {
+//   if (!editingReceivedInvoice) return;
+
+//   try {
+//     const res = await fetch(
+//       `http://localhost:7760/updateinvoices/${editingReceivedInvoice.id}`,
+//       {
+//         method: "PUT",
+//         headers: { "Content-Type": "application/json" },
+//         body: JSON.stringify(editingReceivedInvoice),
+//       }
+//     );
+
+//     if (!res.ok) throw new Error("Failed to update received status");
+
+//     const updatedInvoice = await res.json();
+
+//     // Update local state immediately
+//     setRecievedMonthInvoices((prev) =>
+//       prev.map((inv) =>
+//         inv.id === updatedInvoice.id ? { ...inv, ...updatedInvoice } : inv
+//       )
+//     );
+
+//     setReceivedModalOpen(false);
+//     setEditingReceivedInvoice(null);
+
+//     // ✅ Show success alert
+//     alert("Received status updated successfully!");
+//   } catch (err) {
+//     console.error("Error updating received status:", err);
+//     alert("Failed to update received status.");
+//   }
+// };
+
 const handleSaveReceived = async () => {
   if (!editingReceivedInvoice) return;
 
@@ -494,26 +529,31 @@ const handleSaveReceived = async () => {
 
     if (!res.ok) throw new Error("Failed to update received status");
 
-    const updatedInvoice = await res.json();
+    const data = await res.json();             // ✅ full response
+    const updatedInvoice = data.invoice;       // ✅ extract actual invoice object
 
-    // Update local state immediately
+    // ✅ Instantly update UI
     setRecievedMonthInvoices((prev) =>
       prev.map((inv) =>
-        inv.id === updatedInvoice.id ? { ...inv, ...updatedInvoice } : inv
+        inv.id === updatedInvoice.id
+          ? {
+              ...inv,
+              received: updatedInvoice.received,
+              received_date: updatedInvoice.received_date,
+            }
+          : inv
       )
     );
 
     setReceivedModalOpen(false);
     setEditingReceivedInvoice(null);
 
-    // ✅ Show success alert
     alert("Received status updated successfully!");
   } catch (err) {
     console.error("Error updating received status:", err);
     alert("Failed to update received status.");
   }
 };
-
 
 useEffect(() => {
   if (selectedClient && newInvoice.invoice_value) {
@@ -664,21 +704,21 @@ useEffect(() => {
   
 </div>
 
-
-
-  {/* Scrollable Table Container */}
-  <div
-    style={{
-      maxHeight: "600px", // set desired height
-      overflowY: "auto",
-      marginTop: "20px",
-    }}
-  >
-    <Divider style={{marginTop:"80px",fontWeight:"bold",fontFamily:"monospace",fontSize:"16px",marginBottom:"15px"}}>
+  <Divider style={{marginTop:"250px",fontWeight:"bold",fontFamily:"monospace",fontSize:"16px",marginBottom:"15px"}}>
   {month
     ? new Date(month + "-01").toLocaleString("en-US", { month: "short", year: "numeric" })
     : ""}
 </Divider>
+
+  {/* Scrollable Table Container */}
+  <div
+    style={{
+      maxHeight: "400px", // set desired height
+      overflowY: "auto",
+      marginTop: "20px",
+    }}
+  >
+  
     {/* Active Projects Table */}
 {view === "activeProjects" && (
   <TableContainer component={Paper} style={{ maxHeight: 400 }}>

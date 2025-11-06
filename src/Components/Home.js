@@ -1,30 +1,5 @@
 import React, { useState,useEffect } from "react";
-
-
-
-import {Box,List,ListItemButton,ListItemText,Paper,
-  Typography,
-  AppBar,
-  Toolbar,
-  IconButton,
-  Avatar,
-  Drawer,
-  Modal,
-  ListItemIcon,
-  Button,
-  TextField,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Fab,
-  MenuItem,
-  Stack,
-  Divider,
-  Dialog,DialogTitle,DialogContent,DialogActions,DialogContentText
-} from "@mui/material";
+import {Box,List,ListItemButton,ListItemText,Paper,Typography,AppBar,Toolbar,IconButton,Avatar,Drawer,Modal,ListItemIcon,Button,TextField,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Fab,MenuItem,Stack,Divider,Dialog,DialogTitle,DialogContent,DialogActions,DialogContentText} from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import AccountBalanceIcon from "@mui/icons-material/AccountBalance";
 import PeopleIcon from "@mui/icons-material/People";
@@ -50,8 +25,7 @@ import Invoice from "./Invoice";
 import SaveIcon from '@mui/icons-material/Save';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-
-
+import ForcastingDashboard from "./ForcastingDashboard";
 const menuItems = [
   { text: "Accounts", icon: <AccountBalanceIcon /> },
   { text: "Clients", icon: <PeopleIcon /> },
@@ -788,7 +762,7 @@ const handleClientCancel = () => {
   
   {selected === "Invoice" && <Invoice/>}
 
-  {selected === "Forcasting" && <ForecastDashboard />}
+  {selected === "Forcasting" && <ForcastingDashboard/>}
 
   {selected === "Expenses" && <Expenses/>}
 

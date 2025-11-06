@@ -17,7 +17,7 @@ import {
   TableCell,
   TableBody,
   Stack,
-  IconButton,Dialog,DialogTitle,DialogContent,DialogActions
+  IconButton,Dialog,DialogTitle,DialogContent,DialogActions,FormControl,InputLabel,Select
 } from "@mui/material";
 import AccountBalanceIcon from "@mui/icons-material/AccountBalance";
 import CloseIcon from "@mui/icons-material/Close";
@@ -44,6 +44,11 @@ const AccountsSection = () => {
   const [transferDesc, setTransferDesc] = useState("");
   const [accountNumber,setAccountNumber] = useState("");
   const [openTransactionDialog, setOpenTransactionDialog] = useState(false);
+  const [filterType, setFilterType] = useState("last10");
+const [customDateRange, setCustomDateRange] = useState({ from: "", to: "" });
+const [filteredTransactions, setFilteredTransactions] = useState([]);
+
+
   const [newAccount, setNewAccount] = useState({
     account_number: "",
     account_name: "",
@@ -217,6 +222,43 @@ const handleDownloadPDF = () => {
   doc.save("Transaction_History.pdf");
 };
 
+
+useEffect(() => {
+  applyFilter();
+}, [transactions, filterType]);
+
+const handleApplyCustomFilter = () => {
+  applyFilter();
+};
+
+const applyFilter = () => {
+  let filtered = [...transactions];
+  const now = new Date();
+
+  if (filterType === "last10") {
+    filtered = transactions.slice(-10).reverse(); // latest 10
+  } else if (filterType === "week") {
+    const weekAgo = new Date();
+    weekAgo.setDate(now.getDate() - 7);
+    filtered = transactions.filter(
+      (t) => new Date(t.created_at) >= weekAgo && new Date(t.created_at) <= now
+    );
+  } else if (filterType === "month") {
+    const monthAgo = new Date();
+    monthAgo.setMonth(now.getMonth() - 1);
+    filtered = transactions.filter(
+      (t) => new Date(t.created_at) >= monthAgo && new Date(t.created_at) <= now
+    );
+  } else if (filterType === "custom") {
+    const fromDate = new Date(customDateRange.from);
+    const toDate = new Date(customDateRange.to);
+    filtered = transactions.filter(
+      (t) => new Date(t.created_at) >= fromDate && new Date(t.created_at) <= toDate
+    );
+  }
+
+  setFilteredTransactions(filtered);
+};
   return (
     <Box sx={{ p: 4 }}>
       <Typography
@@ -445,111 +487,155 @@ const handleDownloadPDF = () => {
       </Modal>
 
       {/* 🧾 TRANSACTION HISTORY DIALOG */}
-      <Dialog
-        open={openTransactionDialog}
-        onClose={() => setOpenTransactionDialog(false)}
-        maxWidth="xl"
-        fullWidth
-      >
-        <DialogTitle sx={{ fontWeight: "bold", textAlign: "center" }}>
-          Transaction History
-        </DialogTitle>
+     <Dialog
+  open={openTransactionDialog}
+  onClose={() => setOpenTransactionDialog(false)}
+  maxWidth="xl"
+  fullWidth
+>
+  <DialogTitle sx={{ fontWeight: "bold", textAlign: "center" }}>
+    Transaction History
+  </DialogTitle>
 
-        <DialogContent>
-          <Paper elevation={2} sx={{ p: 2, borderRadius: 2 }}>
-            <Box sx={{ maxHeight: 350, overflowY: "auto" }}>
-             <Table size="small">
-  <TableHead>
-    <TableRow sx={{ backgroundColor: "#f3f4f6" }}>
-      <TableCell style={{fontWeight:"bold"}}>Transaction ID</TableCell>
-      <TableCell style={{fontWeight:"bold"}} >Type</TableCell>
-      <TableCell style={{fontWeight:"bold"}} >Description</TableCell>
-      <TableCell style={{fontWeight:"bold"}}  align="right">Amount</TableCell>
-      <TableCell style={{fontWeight:"bold"}}  align="right">Previous Balance</TableCell>
-      <TableCell style={{fontWeight:"bold"}}  align="right">Updated Balance</TableCell>
-      <TableCell style={{fontWeight:"bold"}} >Date</TableCell>
-    </TableRow>
-  </TableHead>
-
-  <TableBody>
-    {transactions.length > 0 ? (
-      transactions.map((t) => (
-        <TableRow key={t.transaction_id}>
-          {/* Transaction ID */}
-          <TableCell>{t.transaction_id}</TableCell>
-
-          {/* Type (color-coded) */}
-          <TableCell
-            sx={{
-              color:
-                t.type === "Credit"
-                  ? "green"
-                  : t.type === "Debit"
-                  ? "red"
-                  : "inherit",
-              fontWeight: "bold",
-            }}
+  <DialogContent>
+    <Paper elevation={2} sx={{ p: 2, borderRadius: 2 }}>
+      {/* 🧩 Filter Controls */}
+      <Box sx={{ display: "flex", gap: 2, mb: 2, alignItems: "center", flexWrap: "wrap" }}>
+        <FormControl size="small" sx={{ minWidth: 200 }}>
+          <InputLabel>Filter By</InputLabel>
+          <Select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            label="Filter By"
           >
-            {t.type}
-          </TableCell>
+            <MenuItem value="last10">Last 10 Transactions</MenuItem>
+            <MenuItem value="week">Last Week</MenuItem>
+            <MenuItem value="month">Last Month</MenuItem>
+            <MenuItem value="custom">Custom Dates</MenuItem>
+          </Select>
+        </FormControl>
 
-          {/* Description */}
-          <TableCell>{t.description}</TableCell>
+        {/* 📅 Custom Date Pickers */}
+        {filterType === "custom" && (
+          <>
+            <TextField
+              type="date"
+              label="From"
+              size="small"
+              InputLabelProps={{ shrink: true }}
+              value={customDateRange.from}
+              onChange={(e) =>
+                setCustomDateRange((prev) => ({ ...prev, from: e.target.value }))
+              }
+            />
+            <TextField
+              type="date"
+              label="To"
+              size="small"
+              InputLabelProps={{ shrink: true }}
+              value={customDateRange.to}
+              onChange={(e) =>
+                setCustomDateRange((prev) => ({ ...prev, to: e.target.value }))
+              }
+            />
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleApplyCustomFilter}
+              sx={{ height: 40 }}
+            >
+              Apply
+            </Button>
+          </>
+        )}
+      </Box>
 
-          {/* Amount */}
-          <TableCell align="right">₹{Number(t.amount).toFixed(2)}</TableCell>
+      {/* 🧾 Transactions Table */}
+      <Box sx={{ maxHeight: 350, overflowY: "auto" }}>
+        <Table size="small">
+          <TableHead>
+            <TableRow sx={{ backgroundColor: "#f3f4f6" }}>
+              <TableCell sx={{ fontWeight: "bold" }}>Transaction ID</TableCell>
+              <TableCell sx={{ fontWeight: "bold" }}>Type</TableCell>
+              <TableCell sx={{ fontWeight: "bold" }}>Description</TableCell>
+              <TableCell sx={{ fontWeight: "bold" }} align="right">
+                Amount
+              </TableCell>
+              <TableCell sx={{ fontWeight: "bold" }} align="right">
+                Previous Balance
+              </TableCell>
+              <TableCell sx={{ fontWeight: "bold" }} align="right">
+                Updated Balance
+              </TableCell>
+              <TableCell sx={{ fontWeight: "bold" }}>Date</TableCell>
+            </TableRow>
+          </TableHead>
 
-          {/* Previous Balance */}
-          <TableCell align="right">
-            ₹{Number(t.previous_balance || 0).toFixed(2)}
-          </TableCell>
+          <TableBody>
+            {filteredTransactions.length > 0 ? (
+              filteredTransactions.map((t) => (
+                <TableRow key={t.transaction_id}>
+                  <TableCell>{t.transaction_id}</TableCell>
+                  <TableCell
+                    sx={{
+                      color:
+                        t.type === "Credit"
+                          ? "green"
+                          : t.type === "Debit"
+                          ? "red"
+                          : "inherit",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {t.type}
+                  </TableCell>
+                  <TableCell>{t.description}</TableCell>
+                  <TableCell align="right">₹{Number(t.amount).toFixed(2)}</TableCell>
+                  <TableCell align="right">
+                    ₹{Number(t.previous_balance || 0).toFixed(2)}
+                  </TableCell>
+                  <TableCell align="right">
+                    ₹{Number(t.updated_balance || 0).toFixed(2)}
+                  </TableCell>
+                  <TableCell>
+                    {new Date(t.created_at).toLocaleString("en-IN", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={7} align="center">
+                  No transactions found.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </Box>
+    </Paper>
+  </DialogContent>
 
-          {/* Updated Balance */}
-          <TableCell align="right">
-            ₹{Number(t.updated_balance || 0).toFixed(2)}
-          </TableCell>
-
-          {/* Date */}
-          <TableCell>
-            {new Date(t.created_at).toLocaleString("en-IN", {
-              dateStyle: "medium",
-              timeStyle: "short",
-            })}
-          </TableCell>
-        </TableRow>
-      ))
-    ) : (
-      <TableRow>
-        <TableCell colSpan={7} align="center">
-          No transactions found.
-        </TableCell>
-      </TableRow>
-    )}
-  </TableBody>
-</Table>
-
-            </Box>
-          </Paper>
-        </DialogContent>
-
-        <DialogActions sx={{ justifyContent: "space-between", px: 3 }}>
-          <Button
-            variant="outlined"
-            color="secondary"
-            onClick={() => setOpenTransactionDialog(false)}
-          >
-            Close
-          </Button>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleDownloadPDF}
-            disabled={transactions.length === 0}
-          >
-            Download PDF
-          </Button>
-        </DialogActions>
-      </Dialog>
+  <DialogActions sx={{ justifyContent: "space-between", px: 3 }}>
+    <Button
+      variant="outlined"
+      color="secondary"
+      onClick={() => setOpenTransactionDialog(false)}
+    >
+      Close
+    </Button>
+    <Button
+      variant="contained"
+      color="primary"
+      onClick={handleDownloadPDF}
+      disabled={filteredTransactions.length === 0}
+    >
+      Download PDF
+    </Button>
+  </DialogActions>
+</Dialog>
 
       {/* Create Account Modal */}
       <Modal open={openCreate} onClose={() => setOpenCreate(false)}>
