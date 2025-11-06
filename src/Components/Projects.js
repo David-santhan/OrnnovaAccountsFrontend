@@ -17,7 +17,7 @@ import {
   Button,
   MenuItem,
   darkScrollbar,
-  TableContainer,
+  TableContainer,FormControl,InputLabel,Select,Chip,Checkbox,
   IconButton,Divider
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
@@ -68,14 +68,22 @@ const handleSave = async () => {
   try {
     const formData = new FormData();
 
-    // Append all form fields
+    // Append all fields safely
     Object.keys(formValues).forEach((key) => {
       if (key === "purchaseOrder" && formValues.purchaseOrder instanceof File) {
+        // ✅ Attach file
         formData.append("purchaseOrder", formValues.purchaseOrder);
+      } else if (key === "employees") {
+        // ✅ Convert employees array/object to JSON string
+        formData.append("employees", JSON.stringify(formValues.employees || []));
       } else {
+        // ✅ Default string value for other fields
         formData.append(key, formValues[key] ?? "");
       }
     });
+
+    // Optional: Debug what’s being sent
+    // for (let [k, v] of formData.entries()) console.log(k, v);
 
     const res = await axios.put(
       `http://localhost:7760/update-project/${formValues.projectID}`,
@@ -88,7 +96,6 @@ const handleSave = async () => {
     );
 
     if (res.data.success) {
-      // Refresh projects from DB
       const refreshed = await fetch("http://localhost:7760/getprojects").then((r) =>
         r.json()
       );
@@ -103,6 +110,7 @@ const handleSave = async () => {
     alert("Failed to update project!");
   }
 };
+
 
 
   
@@ -120,8 +128,8 @@ const handleSave = async () => {
     billingType: "",
     billRate: "",
     monthlyBilling: "",
-    employeeID: "",
-    employeeName: "",
+    employeeID: [],
+    employeeName: [],
     poNumber: "NA",
     purchaseOrder: null,
     purchaseOrderValue: "NA",
@@ -212,10 +220,10 @@ const handleSave = async () => {
     let monthlyBilling = 0;
     switch (updatedProject.billingType) {
       case "Hour":
-        monthlyBilling = 160 * billRate;
+        monthlyBilling = 240 * billRate;
         break;
       case "Day":
-        monthlyBilling = 20 * billRate;
+        monthlyBilling = 30 * billRate;
         break;
       case "Month":
         monthlyBilling = 1 * billRate;
@@ -232,31 +240,38 @@ const handleSave = async () => {
 
   // Handle form submit
 const handleSubmit = async () => {
-    try {
-      const formData = new FormData();
-      Object.keys(newProject).forEach((key) => {
+  try {
+    const formData = new FormData();
+
+    Object.keys(newProject).forEach((key) => {
+      if (key === "employees") {
+        // ✅ Convert array/object to JSON before appending
+        formData.append("employees", JSON.stringify(newProject.employees || []));
+      } else {
         formData.append(key, newProject[key]);
-      });
+      }
+    });
 
-      const response = await fetch("http://localhost:7760/addproject", {
-        method: "POST",
-        body: formData,
-      });
+    const response = await fetch("http://localhost:7760/addproject", {
+      method: "POST",
+      body: formData,
+    });
 
-      if (!response.ok) throw new Error("Failed to add project");
+    if (!response.ok) throw new Error("Failed to add project");
 
-      const saved = await response.json();
-      setProjects([...projects, saved]);
-      setOpen(false);
-      setSuccessMessage("✅ Project added successfully!");
+    const saved = await response.json();
+    setProjects([...projects, saved]);
+    setOpen(false);
+    setSuccessMessage("✅ Project added successfully!");
 
-      // Auto-hide success message after 3 seconds
-      setTimeout(() => setSuccessMessage(""), 3000);
-    } catch (error) {
-      console.error("Error adding project:", error);
-      setSuccessMessage("❌ Failed to add project");
-    }
-  };
+    // Auto-hide success message after 3 seconds
+    setTimeout(() => setSuccessMessage(""), 3000);
+  } catch (error) {
+    console.error("Error adding project:", error);
+    setSuccessMessage("❌ Failed to add project");
+  }
+};
+
 
   const deleteProject = async (projectID) => {
   try {
@@ -270,6 +285,7 @@ const handleSubmit = async () => {
     alert("Failed to delete project");
   }
 };
+
 
 
   return (
@@ -374,55 +390,69 @@ const handleSubmit = async () => {
             </TableRow>
           </TableHead>
 
-          <TableBody>
-            {projects.map((p, idx) => (
-              <TableRow
-                key={idx}
-                hover
-                sx={{ cursor: "pointer" }}
-                onClick={() => handleRowClick(p)}
-              >
-                <TableCell>{p.projectID}</TableCell>
-                <TableCell>{p.projectName}</TableCell>
-               <TableCell>
-  {(() => {
-    const client = clients.find((c) => c.id === p.clientID);
-    return client ? `${client.clientName} - ${client.id}` : p.clientID;
-  })()}
-</TableCell>
+         <TableBody>
+  {projects.map((p, idx) => (
+    <TableRow
+      key={idx}
+      hover
+      sx={{ cursor: "pointer" }}
+      onClick={() => handleRowClick(p)}
+    >
+      <TableCell>{p.projectID}</TableCell>
+      <TableCell>{p.projectName}</TableCell>
 
-                                <TableCell>{p.employeeName}</TableCell>
-                <TableCell>{p.billingType}</TableCell>
-                <TableCell>
-                  {p.purchaseOrder ? (
-                    <a
-                      href={`http://localhost:7760/uploads/${p.purchaseOrder}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      View
-                    </a>
-                  ) : (
-                    "No File"
-                  )}
-                </TableCell>
-             <TableCell style={{ textAlign: "center" }}>
-  {p.active === "Yes" ? (
-    <span className="blink-green">Yes</span>
-  ) : (
-    <span className="blink-red">No</span>
-  )}
-</TableCell>
+      <TableCell>
+        {(() => {
+          const client = clients.find((c) => c.id === p.clientID);
+          return client ? `${client.clientName} - ${client.id}` : p.clientID;
+        })()}
+      </TableCell>
 
-<TableCell>
-  <IconButton onClick={(e) => { e.stopPropagation(); handleDeleteClick(p); }}>
-    <DeleteIcon color="error" />
-  </IconButton>
-</TableCell>
+      {/* ✅ Updated Employee Column */}
+      <TableCell>
+        {Array.isArray(p.employees) && p.employees.length > 0
+          ? p.employees.map((emp) => emp.name).join(", ")
+          : "—"}
+      </TableCell>
 
-              </TableRow>
-            ))}
-          </TableBody>
+      <TableCell>{p.billingType}</TableCell>
+
+      <TableCell>
+        {p.purchaseOrder ? (
+          <a
+            href={`http://localhost:7760/uploads/${p.purchaseOrder}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View
+          </a>
+        ) : (
+          "No File"
+        )}
+      </TableCell>
+
+      <TableCell style={{ textAlign: "center" }}>
+        {p.active === "Yes" ? (
+          <span className="blink-green">Yes</span>
+        ) : (
+          <span className="blink-red">No</span>
+        )}
+      </TableCell>
+
+      <TableCell>
+        <IconButton
+          onClick={(e) => {
+            e.stopPropagation();
+            handleDeleteClick(p);
+          }}
+        >
+          <DeleteIcon color="error" />
+        </IconButton>
+      </TableCell>
+    </TableRow>
+  ))}
+</TableBody>
+
         </Table>
         </TableContainer>
       )}
@@ -616,7 +646,7 @@ const handleSubmit = async () => {
           onChange={(e) => handleEditChange("monthlyBilling", e.target.value)}
           fullWidth
           margin="normal"
-          InputProps={{ readOnly: true }}
+          // InputProps={{ readOnly: true }}
         />
         <TextField
   select
@@ -635,35 +665,100 @@ const handleSubmit = async () => {
 
       {/* Row 7 */}
       <div style={{ display: "flex", gap: "1rem" }}>
-       <TextField
-  select
-  label="Employee"
-  name="employeeID"
-  value={formValues.employeeID || ""}
-  onChange={(e) => {
-    const selected = employees.find(
-      (emp) => emp.employee_id === e.target.value
-    );
+    <FormControl fullWidth margin="normal">
+  <InputLabel>Employees</InputLabel>
+  <Select
+    multiple
+    displayEmpty
+    value={
+      Array.isArray(formValues.employees)
+        ? formValues.employees.map((emp) => emp.id)
+        : []
+    }
+    onChange={(e) => {
+      const selectedIDs = e.target.value;
 
-    if (selected) {
-      // update both employeeID and employeeName
+      // Get full employee info for all selected IDs
+      const selectedEmployees = employees
+        .filter((emp) => selectedIDs.includes(emp.employee_id))
+        .map((emp) => ({
+          id: emp.employee_id,
+          name: emp.employee_name,
+        }));
+
       setFormValues((prev) => ({
         ...prev,
-        employeeID: selected.employee_id,
-        employeeName: selected.employee_name,
+        employees: selectedEmployees,
       }));
-      setIsDirty(true); // make sure Save button shows up
-    }
-  }}
-  fullWidth
-  margin="normal"
->
-  {employees.map((emp) => (
-    <MenuItem key={emp.employee_id} value={emp.employee_id}>
-      {emp.employee_id} - {emp.employee_name}
-    </MenuItem>
-  ))}
-</TextField>
+
+      setIsDirty(true);
+    }}
+    renderValue={(selected) => {
+      // selected = array of IDs
+      if (!selected || selected.length === 0) {
+        return <em>Select employees</em>;
+      }
+      return (
+        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+          {selected.map((id) => {
+            const emp = employees.find((e) => e.employee_id === id);
+            const empName = emp ? emp.employee_name : id;
+            return (
+              <Chip
+                key={id}
+                label={empName}
+                size="small"
+                onMouseDown={(e) => e.stopPropagation()} // ✅ prevents dropdown from opening on click
+                onDelete={() => {
+                  setFormValues((prev) => {
+                    const updated = prev.employees.filter((e) => e.id !== id);
+                    return { ...prev, employees: updated };
+                  });
+                  setIsDirty(true);
+                }}
+                sx={{
+                  backgroundColor: "#e0f7fa",
+                  "& .MuiChip-deleteIcon": {
+                    color: "gray",
+                    "&:hover": { color: "black" },
+                  },
+                }}
+              />
+            );
+          })}
+        </Box>
+      );
+    }}
+    sx={{ minHeight: "56px" }}
+  >
+    {employees.map((emp, index) => (
+      <MenuItem
+        key={emp.employee_id}
+        value={emp.employee_id}
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          borderBottom:
+            index !== employees.length - 1 ? "1px solid #e0e0e0" : "none",
+          py: 1,
+        }}
+      >
+        <Checkbox
+          checked={
+            Array.isArray(formValues.employees)
+              ? formValues.employees.some((e) => e.id === emp.employee_id)
+              : false
+          }
+        />
+        <span>{emp.employee_name}</span>
+        <span style={{ color: "gray" }}>{emp.employee_id}</span>
+      </MenuItem>
+    ))}
+  </Select>
+</FormControl>
+
+
+
 
         <TextField
           label="PO Number"
@@ -968,13 +1063,18 @@ const handleSubmit = async () => {
 <TextField
   label="Monthly Billing"
   name="monthlyBilling"
-  type="number"
+  type="text"
   value={newProject.monthlyBilling}
-  onChange={handleChange}
+  onChange={(e) =>
+    setNewProject({
+      ...newProject,
+      monthlyBilling: e.target.value,
+    })
+  }
   fullWidth
   margin="normal"
-  InputProps={{ readOnly: true }} // make it auto-calculated
 />
+
   <TextField
     select
     label="Invoice Cycle"
@@ -994,38 +1094,63 @@ const handleSubmit = async () => {
 
     {/* Row 7 */}
     <div style={{ display: "flex", gap: "1rem" }}>
-     <TextField
-  select
-  label="Employee"
-  name="employee"
-  value={newProject.employeeID || ""}
-  onChange={(e) => {
-    const selected = employees.find(emp => emp.employee_id === e.target.value);
-    setNewProject({
-      ...newProject,
-      employeeID: selected.employee_id,
-      employeeName: selected.employee_name,
-    });
-  }}
-  fullWidth
-  margin="normal"
->
-  {employees.map((emp, index) => (
-    <MenuItem
-      key={emp.employee_id}
-      value={emp.employee_id}
-      sx={{
-        display: "flex",
-        justifyContent: "space-between",
-        borderBottom: index !== employees.length - 1 ? "1px solid #e0e0e0" : "none",
-        paddingY: 1,
-      }}
-    >
-      <span>{emp.employee_name}</span>
-      <span style={{ color: "gray" }}>{emp.employee_id}</span>
-    </MenuItem>
-  ))}
-</TextField>
+    <FormControl fullWidth margin="normal">
+  <InputLabel>Employees</InputLabel>
+  <Select
+    multiple
+    value={newProject.employees || []}
+    onChange={(e) => {
+      const selectedIDs = e.target.value;
+
+      // Map to full employee objects (for names too)
+      const selectedEmployees = employees.filter(emp =>
+        selectedIDs.includes(emp.employee_id)
+      );
+
+      setNewProject({
+        ...newProject,
+        employees: selectedIDs, // store all IDs
+        employeeDetails: selectedEmployees.map(emp => ({
+          id: emp.employee_id,
+          name: emp.employee_name,
+        })), // optional, for backend clarity
+      });
+    }}
+    renderValue={(selected) => (
+      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+        {selected.map((id) => {
+          const emp = employees.find((e) => e.employee_id === id);
+          return (
+            <Chip
+              key={id}
+              label={emp ? emp.employee_name : id}
+              sx={{ backgroundColor: "#e0f7fa" }}
+            />
+          );
+        })}
+      </Box>
+    )}
+  >
+    {employees.map((emp, index) => (
+      <MenuItem
+        key={emp.employee_id}
+        value={emp.employee_id}
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          borderBottom:
+            index !== employees.length - 1 ? "1px solid #e0e0e0" : "none",
+          paddingY: 1,
+        }}
+      >
+        <Checkbox checked={newProject.employees?.includes(emp.employee_id)} />
+        <span>{emp.employee_name}</span>
+        <span style={{ color: "gray" }}>{emp.employee_id}</span>
+      </MenuItem>
+    ))}
+  </Select>
+</FormControl>
+
 
 
 
