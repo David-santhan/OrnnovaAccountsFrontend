@@ -523,6 +523,42 @@ useEffect(() => {
   }
 }, [newInvoice.invoice_value, selectedClient]);
 
+// -------- getRaiseEligibility.js --------
+/**
+ * Determine whether a project can raise an invoice in the selected month
+ * and when the next raise date is.
+ * 
+ * @param {object} project - The project object.
+ * @param {string} selectedMonth - The YYYY-MM string from the filter.
+ */
+const getRaiseEligibilityForMonth = (project, selectedMonth) => {
+  if (!project?.startDate) return { canRaise: false, nextRaiseDate: null };
+
+  const start = new Date(project.startDate);
+  const cycle = (project.invoiceCycle || "Monthly").toLowerCase();
+  const monthsToAdd = cycle === "quarterly" ? 3 : 1;
+
+  // Convert selected month (YYYY-MM) → Date object at month start
+  const [year, month] = selectedMonth.split("-").map(Number);
+  const selectedDate = new Date(year, month - 1, 1);
+
+  // Find the first raise date (startDate)
+  let nextRaiseDate = new Date(start);
+
+  // Keep adding cycles until we find the next raise date after or equal to the selected month
+  while (nextRaiseDate < selectedDate) {
+    nextRaiseDate.setMonth(nextRaiseDate.getMonth() + monthsToAdd);
+  }
+
+  // Check if the selected month is the same as the raise month
+  const canRaise =
+    selectedDate.getFullYear() === nextRaiseDate.getFullYear() &&
+    selectedDate.getMonth() === nextRaiseDate.getMonth();
+
+  return { canRaise, nextRaiseDate };
+};
+
+
 
 
   return (
@@ -777,75 +813,94 @@ useEffect(() => {
                     ? new Intl.DateTimeFormat("en-GB").format(new Date(proj.invoice_date))
                     : "-"}
                 </TableCell>
-                <TableCell>
-                  {!proj.invoice_date ? (
-                  <Button
-  variant="contained"
-  color="secondary"
-  size="small"
-  onClick={() => {
-    const client = clients.find(
-      (c) => c.clientID === proj.clientID || c.clientName === proj.clientName
-    );
+            <TableCell>
+  {proj.invoice_date ? (
+    // ✅ Already raised
+    <Button
+      variant="outlined"
+      size="small"
+      onClick={() => {
+        setSelectedInvoice(proj);
+        setOpenPreview(true);
+      }}
+    >
+      View
+    </Button>
+  ) : (
+    (() => {
+      // ✅ Use the selected month from your filter
+      const { canRaise, nextRaiseDate } = getRaiseEligibilityForMonth(
+        proj,
+        filterMonthYear || month // fallback to current month if not selected
+      );
 
-    setSelectedClient(client || null);
-    setProjects(client?.projects || []);
-    setSelectedProject(proj);
+      if (canRaise) {
+        return (
+          <Button
+            variant="contained"
+            color="secondary"
+            size="small"
+            onClick={() => {
+              const client = clients.find(
+                (c) =>
+                  c.clientID === proj.clientID || c.clientName === proj.clientName
+              );
+              setSelectedClient(client || null);
+              setProjects(client?.projects || []);
+              setSelectedProject(proj);
 
-    const now = new Date();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    const year = now.getFullYear();
+              const now = new Date();
+              const m = String(now.getMonth() + 1).padStart(2, "0");
+              const y = now.getFullYear();
 
-    // Calculate GST
-    const invoiceValue = proj.invoice_value || 0;
-    const gstAmount = client?.gstPercentage
-      ? (invoiceValue * client.gstPercentage) / 100
-      : 0;
+              const invoiceValue = proj.invoice_value || 0;
+              const gstAmount = client?.gstPercentage
+                ? (invoiceValue * client.gstPercentage) / 100
+                : 0;
 
-    // Pre-fill invoice
-    const invoiceData = {
-      ...initialInvoiceState,
-      client_name: proj.clientName?.trim() || "",
-      project_id: String(proj.projectID) || "",
-      invoice_number: `${proj.clientName?.trim() || "Client"}-${proj.projectID}-${month}${year}`,
-      start_date: proj.startDate || "",
-      end_date: proj.endDate || "",
-      invoice_value: invoiceValue,
-      gst_amount: gstAmount,
-      due_date: proj.due_date || "",
-      invoice_cycle: proj.invoice_cycle || "",
-      billable_days: proj.billable_days || "",
-      received: "No",
-    };
+              const invoiceData = {
+                ...initialInvoiceState,
+                client_name: proj.clientName?.trim() || "",
+                project_id: String(proj.projectID) || "",
+                invoice_number: `${proj.clientName?.trim() || "Client"}-${proj.projectID}-${m}${y}`,
+                start_date: proj.startDate || "",
+                end_date: proj.endDate || "",
+                invoice_value: invoiceValue,
+                gst_amount: gstAmount,
+                due_date: proj.due_date || "",
+                invoice_cycle: proj.invoiceCycle || "",
+                billable_days: proj.billable_days || "",
+                received: "No",
+              };
 
-    setNewInvoice(invoiceData);
+              setNewInvoice(invoiceData);
+              setIsRaised(true);
+              setOpenDialog(true);
+              handleRaise(invoiceData);
+            }}
+          >
+            Raise
+          </Button>
+        );
+      } else {
+        return (
+          <Button variant="outlined" size="small" disabled>
+            Next:{" "}
+            {nextRaiseDate
+              ? new Intl.DateTimeFormat("en-GB", {
+                  day: "2-digit",
+                  month: "short",
+                  year: "numeric",
+                }).format(nextRaiseDate)
+              : "-"}
+          </Button>
+        );
+      }
+    })()
+  )}
+</TableCell>
 
-    // Mark as raised
-    setIsRaised(true);
 
-    // Open dialog
-    setOpenDialog(true);
-
-    // Call handleRaise with the filled invoiceData
-    handleRaise(invoiceData);
-  }}
->
-  Raise
-</Button>
-
-                  ) : (
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      onClick={() => {
-          setSelectedInvoice(proj);
-          setOpenPreview(true);
-        }}
-                    >
-                      Preview
-                    </Button>
-                  )}
-                </TableCell>
               </TableRow>
             );
           })
@@ -1914,7 +1969,7 @@ useEffect(() => {
   <Table size="small">
     <TableBody>
        <TableRow style={{ backgroundColor: "#edd4d4ff" }}> {/* light green */}
-  <TableCell style={{ fontWeight: "bold" }}>Actual Value</TableCell>
+  <TableCell style={{ fontWeight: "bold" }}>Actual Monthly Value</TableCell>
   <TableCell>
     {actualValue
       ? new Intl.NumberFormat("en-IN", {
