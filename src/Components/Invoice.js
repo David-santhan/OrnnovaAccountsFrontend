@@ -428,14 +428,14 @@ const formatDate = (dateString) => {
 
 // Auto-calculate invoice value and GST whenever relevant data changes
 useEffect(() => {
-  if (!selectedProject) return;
+  if (!selectedProject || !selectedClient) return;
 
-  const cycle = selectedProject.invoiceCycle || newInvoice.invoice_cycle || "Monthly";
-  const gstPercentage = selectedClient?.gstPercentage || 0;
+  const cycle = selectedProject.invoiceCycle || "Monthly";
+  const gstPercentage = selectedClient.gstPercentage || 0;
 
   const { invoiceValue, gstAmount } = calculateInvoiceValue(
     cycle,
-    newInvoice.billable_days,
+    selectedProject.billable_days || 0,
     selectedProject,
     gstPercentage
   );
@@ -446,9 +446,10 @@ useEffect(() => {
     invoice_value: invoiceValue,
     gst_amount: gstAmount,
   }));
-}, [selectedProject, newInvoice.billable_days, selectedClient]);
+}, [selectedClient, selectedProject]);
 
-// Save edited Invoice
+
+// Save edited Invoice newInvoice.billable_days,
 const handleSaveInvoice = async (updatedInvoice) => {
   try {
     const res = await fetch(`http://localhost:7760/invoices/${updatedInvoice.id}`, {
@@ -478,6 +479,41 @@ const handleSaveInvoice = async (updatedInvoice) => {
   }
 };
 // Updating Recieved Status
+// const handleSaveReceived = async () => {
+//   if (!editingReceivedInvoice) return;
+
+//   try {
+//     const res = await fetch(
+//       `http://localhost:7760/updateinvoices/${editingReceivedInvoice.id}`,
+//       {
+//         method: "PUT",
+//         headers: { "Content-Type": "application/json" },
+//         body: JSON.stringify(editingReceivedInvoice),
+//       }
+//     );
+
+//     if (!res.ok) throw new Error("Failed to update received status");
+
+//     const updatedInvoice = await res.json();
+
+//     // Update local state immediately
+//     setRecievedMonthInvoices((prev) =>
+//       prev.map((inv) =>
+//         inv.id === updatedInvoice.id ? { ...inv, ...updatedInvoice } : inv
+//       )
+//     );
+
+//     setReceivedModalOpen(false);
+//     setEditingReceivedInvoice(null);
+
+//     // ✅ Show success alert
+//     alert("Received status updated successfully!");
+//   } catch (err) {
+//     console.error("Error updating received status:", err);
+//     alert("Failed to update received status.");
+//   }
+// };
+
 const handleSaveReceived = async () => {
   if (!editingReceivedInvoice) return;
 
@@ -493,26 +529,31 @@ const handleSaveReceived = async () => {
 
     if (!res.ok) throw new Error("Failed to update received status");
 
-    const updatedInvoice = await res.json();
+    const data = await res.json();             // ✅ full response
+    const updatedInvoice = data.invoice;       // ✅ extract actual invoice object
 
-    // Update local state immediately
+    // ✅ Instantly update UI
     setRecievedMonthInvoices((prev) =>
       prev.map((inv) =>
-        inv.id === updatedInvoice.id ? { ...inv, ...updatedInvoice } : inv
+        inv.id === updatedInvoice.id
+          ? {
+              ...inv,
+              received: updatedInvoice.received,
+              received_date: updatedInvoice.received_date,
+            }
+          : inv
       )
     );
 
     setReceivedModalOpen(false);
     setEditingReceivedInvoice(null);
 
-    // ✅ Show success alert
     alert("Received status updated successfully!");
   } catch (err) {
     console.error("Error updating received status:", err);
     alert("Failed to update received status.");
   }
 };
-
 
 useEffect(() => {
   if (selectedClient && newInvoice.invoice_value) {
@@ -557,6 +598,7 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
 
   return { canRaise, nextRaiseDate };
 };
+
 
 
 
@@ -699,21 +741,21 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
   
 </div>
 
-
-
-  {/* Scrollable Table Container */}
-  <div
-    style={{
-      maxHeight: "600px", // set desired height
-      overflowY: "auto",
-      marginTop: "20px",
-    }}
-  >
-    <Divider style={{marginTop:"80px",fontWeight:"bold",fontFamily:"monospace",fontSize:"16px",marginBottom:"15px"}}>
+  <Divider style={{marginTop:"250px",fontWeight:"bold",fontFamily:"monospace",fontSize:"16px",marginBottom:"15px"}}>
   {month
     ? new Date(month + "-01").toLocaleString("en-US", { month: "short", year: "numeric" })
     : ""}
 </Divider>
+
+  {/* Scrollable Table Container */}
+  <div
+    style={{
+      maxHeight: "400px", // set desired height
+      overflowY: "auto",
+      marginTop: "20px",
+    }}
+  >
+  
     {/* Active Projects Table */}
 {view === "activeProjects" && (
   <TableContainer component={Paper} style={{ maxHeight: 400 }}>
@@ -813,7 +855,7 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
                     ? new Intl.DateTimeFormat("en-GB").format(new Date(proj.invoice_date))
                     : "-"}
                 </TableCell>
-            <TableCell>
+               <TableCell>
   {proj.invoice_date ? (
     // ✅ Already raised
     <Button
@@ -899,7 +941,6 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
     })()
   )}
 </TableCell>
-
 
               </TableRow>
             );
@@ -1760,56 +1801,81 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
 ) : (
   // ✅ Editable Project ID dropdown
   <TextField
-    select
-    fullWidth
-    label="Project ID"
-    name="project_id"
-    value={newInvoice.project_id}
-    sx={{
-      "& .MuiOutlinedInput-root": {
-        "& fieldset": { borderColor: "black" },
-        "&:hover fieldset": { borderColor: "black" },
-        "&.Mui-focused fieldset": { borderColor: "black" },
-      },
-    }}
-    onChange={async (e) => {
-      const projectID = e.target.value;
+  select
+  fullWidth
+  label="Project ID"
+  name="project_id"
+  value={newInvoice.project_id}
+  sx={{
+    "& .MuiOutlinedInput-root": {
+      "& fieldset": { borderColor: "black" },
+      "&:hover fieldset": { borderColor: "black" },
+      "&.Mui-focused fieldset": { borderColor: "black" },
+    },
+  }}
+  onChange={async (e) => {
+    const projectID = e.target.value;
 
-      setNewInvoice((prev) => {
-        const now = new Date();
-        const month = String(now.getMonth() + 1).padStart(2, "0");
-        const year = now.getFullYear();
-        const invoiceNumber = prev.client_name
-          ? `${prev.client_name}-${projectID}-${month}${year}`
-          : prev.invoice_number;
+    // 🔹 Update project_id and generate invoice number
+    setNewInvoice((prev) => {
+      const now = new Date();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const year = now.getFullYear();
+      const invoiceNumber = prev.client_name
+        ? `${prev.client_name}-${projectID}-${month}${year}`
+        : prev.invoice_number;
 
-        return {
-          ...prev,
-          project_id: projectID,
-          invoice_number: invoiceNumber,
-        };
-      });
+      return {
+        ...prev,
+        project_id: projectID,
+        invoice_number: invoiceNumber,
+      };
+    });
 
-      try {
-        const res = await fetch(`http://localhost:7760/getProject/${projectID}`);
-        if (!res.ok) throw new Error("Failed to fetch project");
-        const projectData = await res.json();
-        setSelectedProject(projectData); // useEffect will auto-calc GST & invoice value
-      } catch (err) {
-        console.error("Error fetching project:", err);
-      }
-    }}
-  >
-    {projects.length > 0 ? (
-      projects.map((p) => (
-        <MenuItem key={p.projectID} value={p.projectID}>
-          {p.projectName} - {p.projectID}
-        </MenuItem>
-      ))
-    ) : (
-      <MenuItem disabled>No projects found</MenuItem>
-    )}
-  </TextField>
+    try {
+      // 🔹 Fetch project details
+      const res = await fetch(`http://localhost:7760/getProject/${projectID}`);
+      if (!res.ok) throw new Error("Failed to fetch project");
+      const projectData = await res.json();
+
+      // 🔹 Store selected project
+      setSelectedProject(projectData);
+
+      // 🧮 Immediately calculate GST and invoice value
+      const cycle = projectData.invoiceCycle || "Monthly";
+      const gstPercentage = selectedClient?.gstPercentage || 0;
+
+      // Assuming your helper function exists
+      const { invoiceValue, gstAmount } = calculateInvoiceValue(
+        cycle,
+        newInvoice.billable_days,
+        projectData,
+        gstPercentage
+      );
+
+      // 🔹 Update invoice values immediately
+      setNewInvoice((prev) => ({
+        ...prev,
+        invoice_cycle: cycle,
+        invoice_value: invoiceValue,
+        gst_amount: gstAmount,
+      }));
+    } catch (err) {
+      console.error("Error fetching project:", err);
+    }
+  }}
+>
+  {projects.length > 0 ? (
+    projects.map((p) => (
+      <MenuItem key={p.projectID} value={p.projectID}>
+        {p.projectName} - {p.projectID}
+      </MenuItem>
+    ))
+  ) : (
+    <MenuItem disabled>No projects found</MenuItem>
+  )}
+</TextField>
+
 )}
 
 

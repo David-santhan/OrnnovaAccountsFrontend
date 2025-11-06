@@ -97,27 +97,31 @@ const fetchExpenses = async (selectedMonthYear) => {
   // POST new expense to backend
 const handleAddExpense = async () => {
   try {
-    // Add default paid_date
     const payload = { ...newExpense, paid_date: "00-00-0000" };
-    const res = await axios.post("http://localhost:7760/postexpenses", payload);
-    setExpenses([...expenses, res.data]);
+    await axios.post("http://localhost:7760/postexpenses", payload);
+
+    // Always refetch latest data
+    await fetchExpenses();
+
+    // Reset form + show success
     setNewExpense({
       regular: "",
       type: "",
       description: "",
       amount: "",
       currency: "INR",
-      raised_date: "",
-      status:"",
+      raised_date: today,
+      due_date: "",
+      status: "",
     });
     setOpenDialog(false);
     setSnackbarMessage("Expense added successfully!");
     setSnackbarOpen(true);
-    fetchExpenses(selectedMonthYear);
   } catch (err) {
     console.error("Error adding expense:", err);
   }
 };
+
 
 const handleMarkAsPaid = async (expenseId) => {
   if (!paidDate || !paidAmount) {
@@ -389,7 +393,7 @@ const handleSaveChanges = async () => {
 {/* --- TABLE --- */}
 <TableContainer
   component={Paper}
-  sx={{ maxHeight: 520, overflowX: "auto", marginTop: "250px" }}
+  sx={{ maxHeight: 420, overflowX: "auto", marginTop: "250px" }}
 >
 <Divider style={{padding:"5px",backgroundColor:"rgba(201, 197, 221, 0.8)",fontWeight:"bold",color:"black"}}>
   {new Date(monthYear + "-01").toLocaleString("en-GB", {

@@ -148,7 +148,66 @@ const [employeeToDelete, setEmployeeToDelete] = useState(null);
     }
   };
 
- const handleAddEmployee = async () => {
+//  const handleAddEmployee = async () => {
+//   try {
+//     const formDataToSend = new FormData();
+//     Object.keys(newEmployee).forEach((key) =>
+//       formDataToSend.append(key, newEmployee[key])
+//     );
+
+//     const response = await axios.post(
+//       "http://localhost:7760/postemployees",
+//       formDataToSend,
+//       {
+//         headers: { "Content-Type": "multipart/form-data" },
+//       }
+//     );
+
+//     // ✅ Show success alert
+//     setAlertMessage("Employee added successfully!");
+//     setAlertSeverity("success");
+//     setAlertOpen(true);
+//     setEmployees(allEmployees);
+//     setLoaded(true);
+
+//     // Close dialog
+//     setOpenDialog(false);
+
+//     // Reset form
+//     setNewEmployee({
+//       employee_id: "",
+//       employee_name: "",
+//       email: "",
+//       phone_number: "",
+//       skills: "",
+//       ctc: "",
+//       salary_paid: "No",
+//       billable: "Yes",
+//       consultant_regular: "Regular",
+//       active: "Yes",
+//       project_ending: "No",
+//       resume: null,
+//       photo: null,
+//       date_of_joining:""
+//     });
+
+//     // Refresh employee list
+//     fetchEmployees();
+
+//   } catch (err) {
+//     console.error("Error adding employee:", err);
+
+//     // ❌ Show error alert
+//     setAlertMessage("Failed to add employee. Please try again.");
+//     setAlertSeverity("error");
+//     setAlertOpen(true);
+//   }
+// };
+
+
+  // Deleting Employee
+
+  const handleAddEmployee = async () => {
   try {
     const formDataToSend = new FormData();
     Object.keys(newEmployee).forEach((key) =>
@@ -158,22 +217,21 @@ const [employeeToDelete, setEmployeeToDelete] = useState(null);
     const response = await axios.post(
       "http://localhost:7760/postemployees",
       formDataToSend,
-      {
-        headers: { "Content-Type": "multipart/form-data" },
-      }
+      { headers: { "Content-Type": "multipart/form-data" } }
     );
+
+    // ✅ Optionally read created employee from response
+    const created = response.data;
 
     // ✅ Show success alert
     setAlertMessage("Employee added successfully!");
     setAlertSeverity("success");
     setAlertOpen(true);
-    setEmployees(allEmployees);
-    setLoaded(true);
 
-    // Close dialog
+    // ✅ Close dialog
     setOpenDialog(false);
 
-    // Reset form
+    // ✅ Reset form
     setNewEmployee({
       employee_id: "",
       employee_name: "",
@@ -188,24 +246,23 @@ const [employeeToDelete, setEmployeeToDelete] = useState(null);
       project_ending: "No",
       resume: null,
       photo: null,
-      date_of_joining:""
+      date_of_joining: "",
     });
 
-    // Refresh employee list
-    fetchEmployees();
+    // ✅ Re-fetch employees from backend (updated list)
+    const refreshed = await axios.get("http://localhost:7760/getemployees");
+    setAllEmployees(refreshed.data);
+    setEmployees(refreshed.data);
+    setLoaded(true);
 
   } catch (err) {
     console.error("Error adding employee:", err);
 
-    // ❌ Show error alert
     setAlertMessage("Failed to add employee. Please try again.");
     setAlertSeverity("error");
     setAlertOpen(true);
   }
 };
-
-
-  // Deleting Employee
 
   const handleDelete = async (id) => {
   const confirm = window.confirm("Are you sure you want to delete this employee?");
@@ -243,16 +300,6 @@ const [employeeToDelete, setEmployeeToDelete] = useState(null);
       width: "100%", // ensure full width
     }}
   >
-
-    
-    {/* <Button
-      style={{ fontWeight: "bold", backgroundColor: "rgba(106, 106, 232, 1)" }}
-      variant="contained"
-      onClick={handleLoadEmployees}
-      disabled={loaded}
-    >
-      Load Employees
-    </Button> */}
 
     <TextField
       label="Search by Name"
