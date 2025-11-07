@@ -905,8 +905,10 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
                 client_name: proj.clientName?.trim() || "",
                 project_id: String(proj.projectID) || "",
                 invoice_number: `${proj.clientName?.trim() || "Client"}-${proj.projectID}-${m}${y}`,
-                start_date: proj.startDate || "",
-                end_date: proj.endDate || "",
+                // start_date: proj.startDate || "",
+                // end_date: proj.endDate || "",
+                start_date: "",
+                end_date: "",
                 invoice_value: invoiceValue,
                 gst_amount: gstAmount,
                 due_date: proj.due_date || "",
@@ -1639,7 +1641,7 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
       </Fab>
 
       {/* Add Invoice Dialog */}
-      <Dialog open={openDialog} onClose={() => {setOpenDialog(false);setIsRaised(false)}} fullWidth maxWidth="sm">
+  <Dialog open={openDialog} onClose={() => {setOpenDialog(false);setIsRaised(false)}} fullWidth maxWidth="sm">
   <DialogTitle style={{ fontWeight: "bold" }}>Add Invoice</DialogTitle>
   <DialogContent style={{backgroundColor:"whitesmoke",borderRadius:"5px"}} dividers>
     {/* Row 1: Invoice Number + Client Name */}
