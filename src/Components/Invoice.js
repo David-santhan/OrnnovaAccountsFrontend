@@ -104,6 +104,7 @@ useEffect(() => {
   gst_amount: "",
   due_date: "",
   billable_days: "",
+  non_billable_days: "",
   received: "No",
   received_date: "",
 };
@@ -194,7 +195,7 @@ const handleAddInvoice = async () => {
         invoice_value: 0,  // ✅ default as number
         gst_amount: 0,     // ✅ default as number
         due_date: "",
-        billable_days: 0,  // optional
+        non_billable_days: 0,  // optional
         received: "No",
         received_date: "",
       });
@@ -403,7 +404,7 @@ useEffect(() => {
     const cycle = selectedProject.invoiceCycle;
     const { invoiceValue, gstAmount } = calculateInvoiceValue(
       cycle,
-      newInvoice.billable_days,
+      newInvoice.non_billable_days,
       selectedProject,
       selectedClient?.gstPercentage
     );
@@ -415,7 +416,7 @@ useEffect(() => {
       gst_amount: gstAmount,
     }));
   }
-}, [isRaised, selectedProject, newInvoice.billable_days, selectedClient]);
+}, [isRaised, selectedProject, newInvoice.non_billable_days, selectedClient]);
 
 const formatDate = (dateString) => {
   if (!dateString) return "";
@@ -435,7 +436,7 @@ useEffect(() => {
 
   const { invoiceValue, gstAmount } = calculateInvoiceValue(
     cycle,
-    selectedProject.billable_days || 0,
+    selectedProject.non_billable_days || 0,
     selectedProject,
     gstPercentage
   );
@@ -449,7 +450,7 @@ useEffect(() => {
 }, [selectedClient, selectedProject]);
 
 
-// Save edited Invoice newInvoice.billable_days,
+// Save edited Invoice newInvoice.non_billable_days,
 const handleSaveInvoice = async (updatedInvoice) => {
   try {
     const res = await fetch(`http://localhost:7760/invoices/${updatedInvoice.id}`, {
@@ -913,7 +914,7 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
                 gst_amount: gstAmount,
                 due_date: proj.due_date || "",
                 invoice_cycle: proj.invoiceCycle || "",
-                billable_days: proj.billable_days || "",
+                non_billable_days: proj.non_billable_days || "",
                 received: "No",
               };
 
@@ -1295,9 +1296,9 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
         <TextField
           label="Non-Billable Days"
           type="number"
-          value={editingInvoice.billable_days}
+          value={editingInvoice.non_billable_days}
           onChange={(e) =>
-            setEditingInvoice({ ...editingInvoice, billable_days: e.target.value })
+            setEditingInvoice({ ...editingInvoice, non_billable_days: e.target.value })
           }
           fullWidth
         />
@@ -1669,10 +1670,43 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
     },
   }}
 />
+ <TextField
+  type="date"
+  fullWidth
+  label="Invoice Date"
+  value={newInvoice.invoice_date || ""}
+  onChange={(e) => {
+    const invoiceDate = e.target.value;
+
+    let dueDate = "";
+    if (invoiceDate && selectedClient?.paymentTerms) {
+      const totalDays = Number(selectedClient.paymentTerms) + 2;
+
+      const d = new Date(invoiceDate);
+      d.setDate(d.getDate() + totalDays);
+
+      dueDate = d.toISOString().split("T")[0]; // ✅ ensures YYYY-MM-DD
+      console.log("Calculated due date:", dueDate);
+    }
+
+    setNewInvoice((prev) => ({
+      ...prev,
+      invoice_date: invoiceDate,
+      due_date: dueDate,
+    }));
+  }}
+  InputLabelProps={{ shrink: true }}
+/>
 
 
+    
 
-     {isRaised ? (
+    </div>
+
+    {/* Row 2: Invoice Date + Project */}
+    <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+  
+ {isRaised ? (
   <TextField
     fullWidth
     label="Client Name"
@@ -1746,39 +1780,6 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
   </TextField>
 )}
 
-    </div>
-
-    {/* Row 2: Invoice Date + Project */}
-    <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-   <TextField
-  type="date"
-  fullWidth
-  label="Invoice Date"
-  value={newInvoice.invoice_date || ""}
-  onChange={(e) => {
-    const invoiceDate = e.target.value;
-
-    let dueDate = "";
-    if (invoiceDate && selectedClient?.paymentTerms) {
-      const totalDays = Number(selectedClient.paymentTerms) + 2;
-
-      const d = new Date(invoiceDate);
-      d.setDate(d.getDate() + totalDays);
-
-      dueDate = d.toISOString().split("T")[0]; // ✅ ensures YYYY-MM-DD
-      console.log("Calculated due date:", dueDate);
-    }
-
-    setNewInvoice((prev) => ({
-      ...prev,
-      invoice_date: invoiceDate,
-      due_date: dueDate,
-    }));
-  }}
-  InputLabelProps={{ shrink: true }}
-/>
-
-
 {/* // Project Field Component */}
 {isRaised ? (
   // ✅ Read-only Project field
@@ -1850,7 +1851,7 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
       // Assuming your helper function exists
       const { invoiceValue, gstAmount } = calculateInvoiceValue(
         cycle,
-        newInvoice.billable_days,
+        newInvoice.non_billable_days,
         projectData,
         gstPercentage
       );
@@ -1921,72 +1922,42 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
     },
   }}
 />
+ <TextField
+  fullWidth
+  label="Invoice Cycle"
+  inputProps={{readOnly:true}}
+  value={newInvoice.invoice_cycle}
+  onChange={(e) => {
+    const cycle = e.target.value;
+    const { invoiceValue, gstAmount } = calculateInvoiceValue(
+      cycle,
+      newInvoice.non_billable_days,
+      selectedProject,
+      selectedClient?.gstPercentage
+    );
+
+    setNewInvoice({
+      ...newInvoice,
+      invoice_cycle: cycle,
+      invoice_value: invoiceValue,
+      gst_amount: gstAmount,
+    });
+  }}
+  sx={{
+    "& .MuiOutlinedInput-root": {
+      "& fieldset": { borderColor: "black" },
+      "&:hover fieldset": { borderColor: "black" },
+      "&.Mui-focused fieldset": { borderColor: "black" },
+    },
+  }}
+/>
+
 </div>
 
     {/* Row 4: Invoice Cycle */}
-    <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-      <TextField
-        select
-        fullWidth
-        label="Invoice Cycle"
-        value={newInvoice.invoice_cycle}
-        onChange={(e) => {
-          const cycle = e.target.value;
-          const { invoiceValue, gstAmount } = calculateInvoiceValue(
-            cycle,
-            newInvoice.billable_days,
-            selectedProject,
-            selectedClient?.gstPercentage
-          );
-
-          setNewInvoice({
-            ...newInvoice,
-            invoice_cycle: cycle,
-            invoice_value: invoiceValue,
-            gst_amount: gstAmount,
-          });
-        }}
-        sx={{
-          "& .MuiOutlinedInput-root": {
-            "& fieldset": { borderColor: "black" },
-            "&:hover fieldset": { borderColor: "black" },
-            "&.Mui-focused fieldset": { borderColor: "black" },
-          },
-        }}
-      >
-        <MenuItem value="Monthly">Monthly</MenuItem>
-        <MenuItem value="Quarterly">Quarterly</MenuItem>
-      </TextField>
-      <TextField
-        fullWidth
-        label="Non-Billable Days"
-        type="text"
-        value={newInvoice.billable_days}
-        onChange={(e) => {
-          const days = parseInt(e.target.value) || 0;
-          const { invoiceValue, gstAmount } = calculateInvoiceValue(
-            newInvoice.invoice_cycle,
-            days,
-            selectedProject,
-            selectedClient?.gstPercentage
-          );
-
-          setNewInvoice({
-            ...newInvoice,
-            billable_days: days,
-            invoice_value: invoiceValue,
-            gst_amount: gstAmount,
-          });
-        }}
-        sx={{
-          "& .MuiOutlinedInput-root": {
-            "& fieldset": { borderColor: "black" },
-            "&:hover fieldset": { borderColor: "black" },
-            "&.Mui-focused fieldset": { borderColor: "black" },
-          },
-        }}
-      />
-
+    {/* <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+    
+     
       <TextField
         select
         fullWidth
@@ -2006,8 +1977,53 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
         <MenuItem value="Yes">Yes</MenuItem>
         <MenuItem value="No">No</MenuItem>
       </TextField>
-    </div>
+    </div> */}
+<div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+   <TextField
+        fullWidth
+        label="Billable Days"
+        type="text"
+        value={newInvoice.billable_days}
+       
+        sx={{
+          "& .MuiOutlinedInput-root": {
+            "& fieldset": { borderColor: "black" },
+            "&:hover fieldset": { borderColor: "black" },
+            "&.Mui-focused fieldset": { borderColor: "black" },
+          },
+        }}
+      />
+      <TextField
+        fullWidth
+        label="Non-Billable Days"
+        type="text"
+        value={newInvoice.non_billable_days}
+        onChange={(e) => {
+          const days = parseInt(e.target.value) || 0;
+          const { invoiceValue, gstAmount } = calculateInvoiceValue(
+            newInvoice.invoice_cycle,
+            days,
+            selectedProject,
+            selectedClient?.gstPercentage
+          );
 
+          setNewInvoice({
+            ...newInvoice,
+            non_billable_days: days,
+            invoice_value: invoiceValue,
+            gst_amount: gstAmount,
+          });
+        }}
+        sx={{
+          "& .MuiOutlinedInput-root": {
+            "& fieldset": { borderColor: "black" },
+            "&:hover fieldset": { borderColor: "black" },
+            "&.Mui-focused fieldset": { borderColor: "black" },
+          },
+        }}
+      />
+
+</div>
 
     {/* Conditional Row: Received Date */}
     {newInvoice.received === "Yes" && (
@@ -2288,7 +2304,7 @@ onClose={() => {
           </table>
 
           <p>
-            <strong>Non-Billable Days:</strong> {invoice.billable_days}
+            <strong>Non-Billable Days:</strong> {invoice.non_billable_days}
           </p>
           <strong>Received:</strong>{" "}
           {invoice.received === "Yes" ? (

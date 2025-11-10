@@ -13,16 +13,24 @@ import {
 
 function ForcastingDashboard() {
   const [data, setData] = useState([]);
-  const [monthsBack, setMonthsBack] = useState(6);
-  const [monthsAhead, setMonthsAhead] = useState(6);
+  const [fromMonth, setFromMonth] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 6);
+    return d.toISOString().slice(0, 7); // YYYY-MM
+  });
+  const [toMonth, setToMonth] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 6);
+    return d.toISOString().slice(0, 7); // YYYY-MM
+  });
   const [loading, setLoading] = useState(false);
 
-  // 📊 Fetch and process forecast data from backend (includes salaries)
-  const fetchForecastData = async (back = monthsBack, ahead = monthsAhead) => {
+  // 📊 Fetch and process forecast data
+  const fetchForecastData = async (monthsBack, monthsAhead) => {
     try {
       setLoading(true);
       const res = await axios.get("http://localhost:7760/forecast", {
-        params: { monthsBack: back, monthsAhead: ahead },
+        params: { monthsBack, monthsAhead },
       });
 
       const {
@@ -87,23 +95,43 @@ function ForcastingDashboard() {
     }
   };
 
-  useEffect(() => {
-    fetchForecastData();
-  }, []);
+  // 🧮 Calculate difference in months
+  const calculateMonthRange = (start, end) => {
+    const now = new Date();
+    const startDate = new Date(`${start}-01`);
+    const endDate = new Date(`${end}-01`);
 
-  // 🔁 Refresh chart whenever range changes
+    const monthsBack = Math.max(
+      0,
+      (now.getFullYear() - startDate.getFullYear()) * 12 +
+        (now.getMonth() - startDate.getMonth())
+    );
+    const monthsAhead = Math.max(
+      0,
+      (endDate.getFullYear() - now.getFullYear()) * 12 +
+        (endDate.getMonth() - now.getMonth())
+    );
+
+    return { monthsBack, monthsAhead };
+  };
+
   const handleRangeChange = () => {
+    const { monthsBack, monthsAhead } = calculateMonthRange(fromMonth, toMonth);
     fetchForecastData(monthsBack, monthsAhead);
   };
+
+  useEffect(() => {
+    handleRangeChange();
+  }, []);
 
   return (
     <div
       style={{
         background: "#f9fafb",
-        padding: "2rem",
+        padding: "1rem",
         marginLeft: "10px",
-        marginTop: "30px",
-        width:"1000px"
+        marginTop: "10px",
+        width: "100%",
       }}
     >
       <h2
@@ -117,30 +145,29 @@ function ForcastingDashboard() {
         📈 Monthly Income vs Outgoings (Expenses + Salaries)
       </h2>
 
-      {/* 🔧 Filters Section */}
+      {/* 📅 Month-Year Filters */}
       <div
         style={{
           display: "flex",
           justifyContent: "center",
-          gap: "1rem",
+          gap: "1.5rem",
           alignItems: "center",
           margin: "1.5rem 0",
-          backgroundColor:"lightgray",
-          padding:"7px",
-          borderRadius:"8px"
+          backgroundColor: "lightgray",
+          padding: "12px",
+          borderRadius: "8px",
         }}
       >
         <div>
-          <label style={{ fontWeight: "500" }}>Months Back: </label>
+          <label style={{ fontWeight: "500", marginRight: "6px" }}>
+            From (Month-Year):
+          </label>
           <input
-            type="number"
-            min="0"
-            max="36"
-            value={monthsBack}
-            onChange={(e) => setMonthsBack(parseInt(e.target.value))}
+            type="month"
+            value={fromMonth}
+            onChange={(e) => setFromMonth(e.target.value)}
             style={{
               padding: "6px",
-              width: "80px",
               borderRadius: "6px",
               border: "1px solid #ccc",
             }}
@@ -148,16 +175,15 @@ function ForcastingDashboard() {
         </div>
 
         <div>
-          <label style={{ fontWeight: "500" }}>Months Ahead: </label>
+          <label style={{ fontWeight: "500", marginRight: "6px" }}>
+            To (Month-Year):
+          </label>
           <input
-            type="number"
-            min="0"
-            max="36"
-            value={monthsAhead}
-            onChange={(e) => setMonthsAhead(parseInt(e.target.value))}
+            type="month"
+            value={toMonth}
+            onChange={(e) => setToMonth(e.target.value)}
             style={{
               padding: "6px",
-              width: "80px",
               borderRadius: "6px",
               border: "1px solid #ccc",
             }}
@@ -180,91 +206,171 @@ function ForcastingDashboard() {
         </button>
       </div>
 
-      {loading ? (
-        <p style={{ textAlign: "center", color: "#6b7280" }}>
-          ⏳ Loading forecast data...
-        </p>
-      ) : data.length === 0 ? (
-        <p style={{ textAlign: "center", color: "#9ca3af" }}>
-          No data available for the selected period.
-        </p>
-      ) : (
-        <div
-          style={{
-            width: "95%",
-            height: 450,
-            background: "rgba(160, 225, 252, 0.58)",
+      {/* 📊 Chart Display */}
+     {loading ? (
+  <p style={{ textAlign: "center", color: "#6b7280" }}>
+    ⏳ Loading forecast data...
+  </p>
+) : data.length === 0 ? (
+  <p style={{ textAlign: "center", color: "#9ca3af" }}>
+    No data available for the selected period.
+  </p>
+) : (
+  <div
+    style={{
+      width: "95%",
+      height: 490,
+      background: "linear-gradient(180deg, #f9fafb 0%, #eef2ff 100%)",
+      borderRadius: "20px",
+      padding: "2rem",
+      boxShadow: "0 10px 30px rgba(0,0,0,0.05)",
+      transition: "all 0.4s ease",
+    }}
+  >
+    <ResponsiveContainer width="100%" height="100%">
+      <LineChart data={data} margin={{ top: 30, right: 30, left: 0, bottom: 10 }}>
+        {/* 🎨 Beautiful Grid */}
+        <CartesianGrid strokeDasharray="3 5" stroke="#e5e7eb" />
+
+        {/* 🧭 Modern Axes */}
+        <XAxis
+          dataKey="month"
+          tick={{ fill: "#4b5563", fontSize: 12, fontWeight: 500 }}
+          axisLine={false}
+          tickLine={false}
+        />
+        <YAxis
+          tick={{ fill: "#4b5563", fontSize: 12, fontWeight: 500 }}
+          axisLine={false}
+          tickLine={false}
+        />
+
+        {/* 💬 Elegant Tooltip */}
+        <Tooltip
+          contentStyle={{
+            backgroundColor: "rgba(255,255,255,0.95)",
             borderRadius: "12px",
-            padding: "1rem",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+            boxShadow: "0 8px 16px rgba(0,0,0,0.05)",
+            border: "none",
+            padding: "10px 15px",
           }}
-        >
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
+          labelStyle={{ color: "#111827", fontWeight: "bold" }}
+        />
 
-              {/* ✅ Actual Income */}
-              <Line
-                type="monotone"
-                dataKey="actualIncome"
-                stroke="#16a34a"
-                strokeWidth={3}
-                dot={{ r: 4 }}
-                activeDot={{ r: 6 }}
-                name="Actual Income"
-              />
+        {/* 🧾 Refined Legend */}
+        <Legend
+          verticalAlign="top"
+          align="center"
+          iconType="circle"
+          wrapperStyle={{
+            fontSize: "14px",
+            fontWeight: 500,
+            color: "#1f2937",
+            marginBottom: "10px",
+          }}
+        />
 
-              {/* ✅ Forecasted Income */}
-              <Line
-                type="monotone"
-                dataKey="expectedIncome"
-                stroke="#22c55e"
-                strokeWidth={3}
-                strokeDasharray="5 5"
-                dot={{ r: 3 }}
-                name="Forecasted Income"
-              />
+        {/* 🌈 Gradient Definitions for Line Glows */}
+        <defs>
+          <linearGradient id="greenGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="#22c55e" stopOpacity={0.8} />
+            <stop offset="95%" stopColor="#16a34a" stopOpacity={0.1} />
+          </linearGradient>
 
-              {/* ✅ Actual Expenses + Salaries */}
-              <Line
-                type="monotone"
-                dataKey="actualExpense"
-                stroke="#dc2626"
-                strokeWidth={3}
-                dot={{ r: 4 }}
-                activeDot={{ r: 6 }}
-                name="Actual Expenses + Salaries"
-              />
+          <linearGradient id="redGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
+            <stop offset="95%" stopColor="#dc2626" stopOpacity={0.1} />
+          </linearGradient>
 
-              {/* ✅ Forecasted Expenses + Salaries */}
-              <Line
-                type="monotone"
-                dataKey="expectedExpense"
-                stroke="#f87171"
-                strokeWidth={3}
-                strokeDasharray="5 5"
-                dot={{ r: 3 }}
-                name="Forecasted Expenses + Salaries"
-              />
+          <linearGradient id="purpleGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8} />
+            <stop offset="95%" stopColor="#a78bfa" stopOpacity={0.1} />
+          </linearGradient>
+        </defs>
 
-              {/* 💰 Net Cash Flow */}
-              <Line
-                type="monotone"
-                dataKey="netCashFlow"
-                stroke="#8b5cf6"
-                strokeWidth={3}
-                dot={{ r: 3 }}
-                strokeDasharray="4 4"
-                name="Net Cash Flow"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      )}
+        {/* 💚 Actual Income */}
+        <Line
+          type="monotone"
+          dataKey="actualIncome"
+          stroke="url(#greenGradient)"
+          strokeWidth={4}
+          dot={false}
+          activeDot={{ r: 6, strokeWidth: 2, stroke: "#16a34a", fill: "#22c55e" }}
+          animationDuration={1200}
+          animationEasing="ease-out"
+          name="Actual Income"
+          style={{
+            filter: "drop-shadow(0px 4px 8px rgba(22, 163, 74, 0.25))",
+          }}
+        />
+
+        {/* 💚 Forecasted Income (Dashed) */}
+        <Line
+          type="monotone"
+          dataKey="expectedIncome"
+          stroke="#16a34a"
+          strokeWidth={3}
+          strokeDasharray="6 6"
+          dot={false}
+          animationDuration={1000}
+          name="Forecasted Income"
+          style={{
+            opacity: 0.8,
+          }}
+        />
+
+        {/* ❤️ Actual Expenses */}
+        <Line
+          type="monotone"
+          dataKey="actualExpense"
+          stroke="url(#redGradient)"
+          strokeWidth={4}
+          dot={false}
+          activeDot={{ r: 6, strokeWidth: 2, stroke: "#ef4444", fill: "#dc2626" }}
+          animationDuration={1200}
+          animationEasing="ease-out"
+          name="Actual Expenses + Salaries"
+          style={{
+            filter: "drop-shadow(0px 4px 8px rgba(239, 68, 68, 0.25))",
+          }}
+        />
+
+        {/* ❤️ Forecasted Expenses (Dashed) */}
+        <Line
+          type="monotone"
+          dataKey="expectedExpense"
+          stroke="#ef4444"
+          strokeWidth={3}
+          strokeDasharray="6 6"
+          dot={false}
+          animationDuration={1000}
+          name="Forecasted Expenses + Salaries"
+          style={{
+            opacity: 0.8,
+          }}
+        />
+
+        {/* 💜 Net Cash Flow */}
+        <Line
+          type="monotone"
+          dataKey="netCashFlow"
+          stroke="url(#purpleGradient)"
+          strokeWidth={3.5}
+          dot={false}
+          activeDot={{ r: 6, strokeWidth: 2, stroke: "#8b5cf6", fill: "#a78bfa" }}
+          strokeDasharray="4 4"
+          animationDuration={1300}
+          animationEasing="ease-in-out"
+          name="Net Cash Flow"
+          style={{
+            filter: "drop-shadow(0px 3px 8px rgba(139, 92, 246, 0.35))",
+          }}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  </div>
+)}
+
     </div>
   );
 }
