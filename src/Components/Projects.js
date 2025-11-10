@@ -238,34 +238,7 @@ const handleSave = async () => {
 };
 
 
-  // Handle form submit
-// const handleSubmit = async () => {
-//     try {
-//       const formData = new FormData();
-//       Object.keys(newProject).forEach((key) => {
-//         formData.append(key, newProject[key]);
-//       });
-
-//       const response = await fetch("http://localhost:7760/addproject", {
-//         method: "POST",
-//         body: formData,
-//       });
-
-//       if (!response.ok) throw new Error("Failed to add project");
-
-//       const saved = await response.json();
-//       setProjects([...projects, saved]);
-//       setOpen(false);
-//       setSuccessMessage("✅ Project added successfully!");
-
-//       // Auto-hide success message after 3 seconds
-//       setTimeout(() => setSuccessMessage(""), 3000);
-//     } catch (error) {
-//       console.error("Error adding project:", error);
-//       setSuccessMessage("❌ Failed to add project");
-//     }
-//   };
-
+  
 const handleSubmit = async () => {
   try {
     const formData = new FormData();
