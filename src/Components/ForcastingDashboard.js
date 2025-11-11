@@ -87,6 +87,7 @@ function ForcastingDashboard() {
         .sort((a, b) => (a.month || "").localeCompare(b.month || ""));
 
       setData(result);
+      console.log(result)
       setLoading(false);
     } catch (err) {
       console.error("❌ Error fetching forecast:", err);
