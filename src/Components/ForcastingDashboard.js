@@ -10,27 +10,33 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import { Modal } from "@mui/material"; // ✅ Add MUI for dialog
 
 function ForcastingDashboard() {
   const [data, setData] = useState([]);
-  const [fromMonth, setFromMonth] = useState(() => {
+  const [fromDate, setFromDate] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 6);
-    return d.toISOString().slice(0, 7); // YYYY-MM
+    return d.toISOString().slice(0, 10);
   });
-  const [toMonth, setToMonth] = useState(() => {
+  const [toDate, setToDate] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() + 6);
-    return d.toISOString().slice(0, 7); // YYYY-MM
+    return d.toISOString().slice(0, 10);
   });
   const [loading, setLoading] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(null); // ✅ For modal
+  const [modalOpen, setModalOpen] = useState(false); // ✅ Modal toggle
+const [details, setDetails] = useState(null);
 
-  // 📊 Fetch and process forecast data
-  const fetchForecastData = async (monthsBack, monthsAhead) => {
+
+
+  // 📊 Fetch forecast data
+  const fetchForecastData = async () => {
     try {
       setLoading(true);
       const res = await axios.get("http://localhost:7760/forecast", {
-        params: { monthsBack, monthsAhead },
+        params: { fromDate, toDate },
       });
 
       const {
@@ -42,53 +48,58 @@ function ForcastingDashboard() {
 
       const merged = {};
 
+      // 🟢 Actual Income
       pastIncome.forEach((i) => {
-        if (!i.month) return;
-        if (!merged[i.month]) merged[i.month] = { month: i.month };
-        merged[i.month].actualIncome = i.total_income || 0;
+        if (!i.date) return;
+        if (!merged[i.date]) merged[i.date] = { date: i.date };
+        merged[i.date].actualIncome = Number(i.total_income || 0);
       });
 
+      // 🔵 Forecasted Income
       futureIncome.forEach((i) => {
-        if (!i.month) return;
-        if (!merged[i.month]) merged[i.month] = { month: i.month };
-        merged[i.month].expectedIncome = i.expected_income || 0;
+        if (!i.date) return;
+        if (!merged[i.date]) merged[i.date] = { date: i.date };
+        merged[i.date].expectedIncome = Number(i.expected_income || 0);
       });
 
+      // 🔴 Actual Expenses
       pastExpenses.forEach((e) => {
-        if (!e.month) return;
-        if (!merged[e.month]) merged[e.month] = { month: e.month };
-        merged[e.month].actualExpense =
-          (merged[e.month].actualExpense || 0) +
-          (e.total_expense || 0) +
-          (e.total_salaries || 0);
+        if (!e.date) return;
+        if (!merged[e.date]) merged[e.date] = { date: e.date };
+        merged[e.date].actualExpense = Number(e.amount || 0);
       });
 
-      futureExpenses.forEach((e) => {
-        if (!e.month) return;
-        if (!merged[e.month]) merged[e.month] = { month: e.month };
-        merged[e.month].expectedExpense =
-          (merged[e.month].expectedExpense || 0) + (e.expected_expense || 0);
-      });
+      // 🟣 Forecasted Expenses
+    // 🟣 Forecasted Expenses (fix accumulation for regular recurring expenses)
+futureExpenses.forEach((e) => {
+  if (!e.date) return;
+  if (!merged[e.date]) merged[e.date] = { date: e.date };
+  
+  // accumulate multiple forecasted expenses if same date occurs more than once
+  merged[e.date].expectedExpense =
+    (merged[e.date].expectedExpense || 0) + Number(e.expected_expense || 0);
+});
 
+
+      // Combine & sort
       const result = Object.values(merged)
-        .filter((d) => d.month)
         .map((d) => ({
-          month: d.month,
-          income: (d.actualIncome || 0) + (d.expectedIncome || 0),
-          expense: (d.actualExpense || 0) + (d.expectedExpense || 0),
+          date: d.date,
           actualIncome: d.actualIncome || 0,
           expectedIncome: d.expectedIncome || 0,
           actualExpense: d.actualExpense || 0,
           expectedExpense: d.expectedExpense || 0,
+          totalIncome: (d.actualIncome || 0) + (d.expectedIncome || 0),
+          totalExpense: (d.actualExpense || 0) + (d.expectedExpense || 0),
           netCashFlow:
-            (d.actualIncome || d.expectedIncome || 0) -
-            (d.actualExpense || d.expectedExpense || 0),
+            ((d.actualIncome || d.expectedIncome || 0) -
+              (d.actualExpense || d.expectedExpense || 0)) || 0,
         }))
-        .sort((a, b) => (a.month || "").localeCompare(b.month || ""));
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
 
       setData(result);
-      console.log(result)
       setLoading(false);
+      console.log(data)
     } catch (err) {
       console.error("❌ Error fetching forecast:", err);
       setLoading(false);
@@ -96,34 +107,75 @@ function ForcastingDashboard() {
     }
   };
 
-  // 🧮 Calculate difference in months
-  const calculateMonthRange = (start, end) => {
-    const now = new Date();
-    const startDate = new Date(`${start}-01`);
-    const endDate = new Date(`${end}-01`);
-
-    const monthsBack = Math.max(
-      0,
-      (now.getFullYear() - startDate.getFullYear()) * 12 +
-        (now.getMonth() - startDate.getMonth())
-    );
-    const monthsAhead = Math.max(
-      0,
-      (endDate.getFullYear() - now.getFullYear()) * 12 +
-        (endDate.getMonth() - now.getMonth())
-    );
-
-    return { monthsBack, monthsAhead };
-  };
-
-  const handleRangeChange = () => {
-    const { monthsBack, monthsAhead } = calculateMonthRange(fromMonth, toMonth);
-    fetchForecastData(monthsBack, monthsAhead);
-  };
-
   useEffect(() => {
-    handleRangeChange();
+    fetchForecastData();
   }, []);
+
+const fetchDetailsForDate = async (date) => {
+  try {
+    const res = await axios.get("http://localhost:7760/forecast/details", {
+      params: { date },
+    });
+    setDetails(res.data); // 👈 Important: Store full object
+  } catch (err) {
+    console.error("Error fetching details:", err);
+    setDetails(null);
+  }
+};
+
+
+const handleChartClick = (state) => {
+  if (state && state.activeLabel) {
+    const clickedDate = state.activeLabel;
+    const dateData = data.find((d) => d.date === clickedDate);
+    if (dateData) {
+      setSelectedDate(dateData);
+      fetchDetailsForDate(clickedDate); // 🔍 Fetch extra info
+      setModalOpen(true);
+    }
+  }
+};
+// 🧮 Compute Summary Totals for selected range
+const computeSummary = (data) => {
+  if (!data || data.length === 0) return null;
+
+  const start = new Date(fromDate);
+  const end = new Date(toDate);
+
+  let actualIncome = 0,
+    forecastedIncome = 0,
+    actualExpense = 0,
+    forecastedExpense = 0,
+    cashFlowBefore = 0,
+    cashFlowAfter = 0;
+
+  data.forEach((d) => {
+    const date = new Date(d.date);
+    if (date >= start && date <= end) {
+      actualIncome += d.actualIncome || 0;
+      forecastedIncome += d.expectedIncome || 0;
+      actualExpense += d.actualExpense || 0;
+      forecastedExpense += d.expectedExpense || 0;
+    } else if (date < start) {
+      // Cash flow before
+      cashFlowBefore = d.netCashFlow;
+    } else if (date > end) {
+      // Cash flow after
+      cashFlowAfter = d.netCashFlow;
+    }
+  });
+
+  return {
+    actualIncome,
+    forecastedIncome,
+    actualExpense,
+    forecastedExpense,
+    cashFlowBefore,
+    cashFlowAfter,
+  };
+};
+const summary = computeSummary(data);
+
 
   return (
     <div
@@ -143,10 +195,10 @@ function ForcastingDashboard() {
           color: "#1f2937",
         }}
       >
-        📈 Monthly Income vs Outgoings (Expenses + Salaries)
+        📅 Date-wise Income vs Outgoings (Actual + Forecast)
       </h2>
 
-      {/* 📅 Month-Year Filters */}
+      {/* 📅 Date Filters */}
       <div
         style={{
           display: "flex",
@@ -161,12 +213,12 @@ function ForcastingDashboard() {
       >
         <div>
           <label style={{ fontWeight: "500", marginRight: "6px" }}>
-            From (Month-Year):
+            From (Date):
           </label>
           <input
-            type="month"
-            value={fromMonth}
-            onChange={(e) => setFromMonth(e.target.value)}
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
             style={{
               padding: "6px",
               borderRadius: "6px",
@@ -177,12 +229,12 @@ function ForcastingDashboard() {
 
         <div>
           <label style={{ fontWeight: "500", marginRight: "6px" }}>
-            To (Month-Year):
+            To (Date):
           </label>
           <input
-            type="month"
-            value={toMonth}
-            onChange={(e) => setToMonth(e.target.value)}
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
             style={{
               padding: "6px",
               borderRadius: "6px",
@@ -192,7 +244,7 @@ function ForcastingDashboard() {
         </div>
 
         <button
-          onClick={handleRangeChange}
+          onClick={fetchForecastData}
           style={{
             backgroundColor: "#2563eb",
             color: "white",
@@ -207,170 +259,331 @@ function ForcastingDashboard() {
         </button>
       </div>
 
-      {/* 📊 Chart Display */}
-     {loading ? (
-  <p style={{ textAlign: "center", color: "#6b7280" }}>
-    ⏳ Loading forecast data...
-  </p>
-) : data.length === 0 ? (
-  <p style={{ textAlign: "center", color: "#9ca3af" }}>
-    No data available for the selected period.
-  </p>
-) : (
+      {/* 📊 Chart */}
+      {loading ? (
+        <p style={{ textAlign: "center", color: "#6b7280" }}>
+          ⏳ Loading forecast data...
+        </p>
+      ) : data.length === 0 ? (
+        <p style={{ textAlign: "center", color: "#9ca3af" }}>
+          No data available for the selected range.
+        </p>
+      ) : (
+        <div
+  style={{
+    position: "relative", // 👈 Add this
+    width: "95%",
+    height: 500,
+    background: "linear-gradient(180deg, #f9fafb 0%, #eef2ff 100%)",
+    borderRadius: "20px",
+    padding: "2rem",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.05)",
+  }}
+>
+          {summary && (
   <div
     style={{
-      width: "95%",
-      height: 490,
-      background: "linear-gradient(180deg, #f9fafb 0%, #eef2ff 100%)",
-      borderRadius: "20px",
-      padding: "2rem",
-      boxShadow: "0 10px 30px rgba(0,0,0,0.05)",
-      transition: "all 0.4s ease",
+      position: "absolute",
+      top: "20px",
+      right: "40px",
+      background: "rgba(255, 255, 255, 0.95)",
+      border: "1px solid #e5e7eb",
+      borderRadius: "10px",
+      padding: "1rem 1.5rem",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+      fontSize: "0.9rem",
+      width: "240px",
+      lineHeight: "1.5",
     }}
   >
-    <ResponsiveContainer width="100%" height="100%">
-      <LineChart data={data} margin={{ top: 30, right: 30, left: 0, bottom: 10 }}>
-        {/* 🎨 Beautiful Grid */}
-        <CartesianGrid strokeDasharray="3 5" stroke="#e5e7eb" />
-
-        {/* 🧭 Modern Axes */}
-        <XAxis
-          dataKey="month"
-          tick={{ fill: "#4b5563", fontSize: 12, fontWeight: 500 }}
-          axisLine={false}
-          tickLine={false}
-        />
-        <YAxis
-          tick={{ fill: "#4b5563", fontSize: 12, fontWeight: 500 }}
-          axisLine={false}
-          tickLine={false}
-        />
-
-        {/* 💬 Elegant Tooltip */}
-        <Tooltip
-          contentStyle={{
-            backgroundColor: "rgba(255,255,255,0.95)",
-            borderRadius: "12px",
-            boxShadow: "0 8px 16px rgba(0,0,0,0.05)",
-            border: "none",
-            padding: "10px 15px",
-          }}
-          labelStyle={{ color: "#111827", fontWeight: "bold" }}
-        />
-
-        {/* 🧾 Refined Legend */}
-        <Legend
-          verticalAlign="top"
-          align="center"
-          iconType="circle"
-          wrapperStyle={{
-            fontSize: "14px",
-            fontWeight: 500,
-            color: "#1f2937",
-            marginBottom: "10px",
-          }}
-        />
-
-        {/* 🌈 Gradient Definitions for Line Glows */}
-        <defs>
-          <linearGradient id="greenGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#22c55e" stopOpacity={0.8} />
-            <stop offset="95%" stopColor="#16a34a" stopOpacity={0.1} />
-          </linearGradient>
-
-          <linearGradient id="redGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
-            <stop offset="95%" stopColor="#dc2626" stopOpacity={0.1} />
-          </linearGradient>
-
-          <linearGradient id="purpleGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8} />
-            <stop offset="95%" stopColor="#a78bfa" stopOpacity={0.1} />
-          </linearGradient>
-        </defs>
-
-        {/* 💚 Actual Income */}
-        <Line
-          type="monotone"
-          dataKey="actualIncome"
-          stroke="url(#greenGradient)"
-          strokeWidth={4}
-          dot={false}
-          activeDot={{ r: 6, strokeWidth: 2, stroke: "#16a34a", fill: "#22c55e" }}
-          animationDuration={1200}
-          animationEasing="ease-out"
-          name="Actual Income"
-          style={{
-            filter: "drop-shadow(0px 4px 8px rgba(22, 163, 74, 0.25))",
-          }}
-        />
-
-        {/* 💚 Forecasted Income (Dashed) */}
-        <Line
-          type="monotone"
-          dataKey="expectedIncome"
-          stroke="#16a34a"
-          strokeWidth={3}
-          strokeDasharray="6 6"
-          dot={false}
-          animationDuration={1000}
-          name="Forecasted Income"
-          style={{
-            opacity: 0.8,
-          }}
-        />
-
-        {/* ❤️ Actual Expenses */}
-        <Line
-          type="monotone"
-          dataKey="actualExpense"
-          stroke="url(#redGradient)"
-          strokeWidth={4}
-          dot={false}
-          activeDot={{ r: 6, strokeWidth: 2, stroke: "#ef4444", fill: "#dc2626" }}
-          animationDuration={1200}
-          animationEasing="ease-out"
-          name="Actual Expenses + Salaries"
-          style={{
-            filter: "drop-shadow(0px 4px 8px rgba(239, 68, 68, 0.25))",
-          }}
-        />
-
-        {/* ❤️ Forecasted Expenses (Dashed) */}
-        <Line
-          type="monotone"
-          dataKey="expectedExpense"
-          stroke="#ef4444"
-          strokeWidth={3}
-          strokeDasharray="6 6"
-          dot={false}
-          animationDuration={1000}
-          name="Forecasted Expenses + Salaries"
-          style={{
-            opacity: 0.8,
-          }}
-        />
-
-        {/* 💜 Net Cash Flow */}
-        <Line
-          type="monotone"
-          dataKey="netCashFlow"
-          stroke="url(#purpleGradient)"
-          strokeWidth={3.5}
-          dot={false}
-          activeDot={{ r: 6, strokeWidth: 2, stroke: "#8b5cf6", fill: "#a78bfa" }}
-          strokeDasharray="4 4"
-          animationDuration={1300}
-          animationEasing="ease-in-out"
-          name="Net Cash Flow"
-          style={{
-            filter: "drop-shadow(0px 3px 8px rgba(139, 92, 246, 0.35))",
-          }}
-        />
-      </LineChart>
-    </ResponsiveContainer>
+    <h4 style={{ marginBottom: "0.5rem", textAlign: "center" }}>
+      📊 Summary ({new Date(fromDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })} →{" "}
+      {new Date(toDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })})
+    </h4>
+    <hr style={{ marginBottom: "0.5rem" }} />
+    <div><strong style={{ color: "#16a34a" }}>Actual Income:</strong> ₹{summary.actualIncome.toLocaleString()}</div>
+    <div><strong style={{ color: "#65a30d" }}>Forecasted Income:</strong> ₹{summary.forecastedIncome.toLocaleString()}</div>
+    <div><strong style={{ color: "#dc2626" }}>Actual Expense:</strong> ₹{summary.actualExpense.toLocaleString()}</div>
+    <div><strong style={{ color: "#f97316" }}>Forecasted Expense:</strong> ₹{summary.forecastedExpense.toLocaleString()}</div>
+    {/* <hr style={{ margin: "0.5rem 0" }} />
+    <div><strong>💰 Cash Flow Before:</strong> ₹{summary.cashFlowBefore.toLocaleString()}</div>
+    <div><strong>💰 Cash Flow After:</strong> ₹{summary.cashFlowAfter.toLocaleString()}</div> */}
   </div>
 )}
+
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data} onClick={handleChartClick}>
+              <CartesianGrid strokeDasharray="3 5" stroke="#e5e7eb" />
+              <XAxis
+                dataKey="date"
+                tickFormatter={(v) =>
+                  new Date(v).toLocaleDateString("en-GB", {
+                    day: "2-digit",
+                    month: "short",
+                  })
+                }
+                tick={{ fontSize: 11 }}
+                minTickGap={20}
+              />
+              <YAxis />
+              <Tooltip
+                labelFormatter={(v) =>
+                  new Date(v).toLocaleDateString("en-GB", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                  })
+                }
+              />
+              <Legend />
+
+              <Line type="monotone" dataKey="actualIncome" stroke="#16a34a" name="Actual Income" />
+              <Line type="monotone" dataKey="expectedIncome" stroke="#86efac" strokeDasharray="6 6" name="Forecasted Income" />
+              <Line type="monotone" dataKey="actualExpense" stroke="#dc2626" name="Actual Expenses" />
+              <Line type="monotone" dataKey="expectedExpense" stroke="#fca5a5" strokeDasharray="6 6" name="Forecasted Expenses" />
+              <Line type="monotone" dataKey="netCashFlow" stroke="#8b5cf6" strokeDasharray="4 4" name="Net Cash Flow" />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+  <Modal open={modalOpen} onClose={() => setModalOpen(false)}>
+  <div
+    style={{
+      position: "absolute",
+      top: "50%",
+      left: "50%",
+      transform: "translate(-50%, -50%)",
+      background: "#fff",
+      padding: "1.5rem 2rem",
+      borderRadius: "10px",
+      boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
+      width: "800px",
+      maxHeight: "85vh",
+      overflowY: "auto",
+    }}
+  >
+    {selectedDate && (
+      <>
+        <h2 style={{ textAlign: "center", color: "#1f2937", marginBottom: "10px" }}>
+          📅 {new Date(selectedDate.date).toLocaleDateString("en-GB")}
+        </h2>
+        <hr />
+
+        {!details ? (
+          <p style={{ textAlign: "center" }}>⏳ Loading details...</p>
+        ) : (
+          <>
+            {/* === Section Helper Function === */}
+            {[
+              {
+                key: "actualIncome",
+                title: "✅ Actual Income",
+                color: "#16a34a",
+                columns: ["Client", "Invoice No", "Project ID", "Value (₹)", "GST (₹)", "Received Date"],
+                data: details.details?.actualIncome || [],
+                rowRender: (i) => [
+                  i.client_name,
+                  i.invoice_number,
+                  i.project_id,
+                  i.invoice_value?.toLocaleString(),
+                  i.gst_amount?.toLocaleString(),
+                  i.received_date,
+                ],
+              },
+              {
+                key: "forecastedIncome",
+                title: "📈 Forecasted Income",
+                color: "#65a30d",
+                columns: ["Client", "Invoice No", "Project ID", "Value (₹)", "GST (₹)", "Due Date"],
+                data: details.details?.forecastedIncome || [],
+                rowRender: (i) => [
+                  i.client_name,
+                  i.invoice_number,
+                  i.project_id,
+                  i.invoice_value?.toLocaleString(),
+                  i.gst_amount?.toLocaleString(),
+                  i.due_date,
+                ],
+              },
+              {
+                key: "actualExpenses",
+                title: "💸 Actual Expenses",
+                color: "#dc2626",
+                columns: ["Type", "Description", "Paid Amount (₹)", "Paid Date"],
+                data: details.details?.actualExpenses || [],
+                rowRender: (e) => [
+                  e.expense_type,
+                  e.description,
+                  e.paid_amount?.toLocaleString(),
+                  e.paid_date,
+                ],
+              },
+              {
+                key: "forecastedExpenses",
+                title: "🧾 Forecasted Expenses",
+                color: "#f97316",
+                columns: ["Type", "Description", "Amount (₹)", "Regular", "Due Date"],
+                data: details.details?.forecastedExpenses || [],
+                rowRender: (e) => [
+                  e.expense_type,
+                  e.description,
+                  e.amount?.toLocaleString(),
+                  e.regular === "Yes" ? "Yes ✅" : "No",
+                  e.due_date,
+                ],
+              },
+              {
+                key: "salaries",
+                title: "👤 Salaries",
+                color: "#8b5cf6",
+                columns: ["Employee", "Employee ID", "Paid Amount (₹)", "Paid Date", "Month"],
+                data: details.details?.salaries || [],
+                rowRender: (s) => [
+                  s.employee_name,
+                  s.employee_id,
+                  s.paid_amount?.toLocaleString(),
+                  s.paid_date,
+                  s.month,
+                ],
+              },
+            ].map(
+              (section) =>
+                section.data.length > 0 && (
+                  <div key={section.key} style={{ marginTop: "1.5rem" }}>
+                    <h4 style={{ color: section.color }}>{section.title}</h4>
+                    <div style={{ overflowX: "auto" }}>
+                      <table
+                        style={{
+                          width: "100%",
+                          borderCollapse: "collapse",
+                          marginTop: "6px",
+                        }}
+                      >
+                        <thead>
+                          <tr style={{ background: "#f3f4f6" }}>
+                            {section.columns.map((col, idx) => (
+                              <th
+                                key={idx}
+                                style={{
+                                  textAlign: "left",
+                                  padding: "8px",
+                                  borderBottom: "2px solid #e5e7eb",
+                                }}
+                              >
+                                {col}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {section.data.map((row, idx) => (
+                            <tr key={idx} style={{ borderBottom: "1px solid #eee" }}>
+                              {section.rowRender(row).map((cell, cidx) => (
+                                <td
+                                  key={cidx}
+                                  style={{
+                                    padding: "6px 8px",
+                                    fontSize: "0.9rem",
+                                    color: "#374151",
+                                  }}
+                                >
+                                  {cell || "-"}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )
+            )}
+
+            {/* === Summary Section === */}
+            <div
+              style={{
+                backgroundColor: "#f9fafb",
+                marginTop: "1.5rem",
+                padding: "1rem",
+                borderRadius: "8px",
+                border: "1px solid #e5e7eb",
+              }}
+            >
+              <h4 style={{ textAlign: "center", color: "#1f2937" }}>🧮 Summary</h4>
+              <table style={{ width: "100%", marginTop: "6px", borderCollapse: "collapse" }}>
+             <tbody>
+  <tr>
+    <td>🏦 Current Account Balance</td>
+    <td style={{ textAlign: "right" }}>
+      ₹{details.summary?.currentAccountBalance?.toLocaleString() || 0}
+    </td>
+  </tr>
+  <tr>
+    <td>📈 Forecasted Income</td>
+    <td style={{ textAlign: "right" }}>
+      ₹{details.summary?.forecastedIncomeTotal?.toLocaleString() || 0}
+    </td>
+  </tr>
+  <tr>
+    <td>🧾 Forecasted Expenses</td>
+    <td style={{ textAlign: "right" }}>
+      ₹{details.summary?.forecastedExpensesTotal?.toLocaleString() || 0}
+    </td>
+  </tr>
+  <tr>
+    <td>👤 Forecasted Salaries</td>
+    <td style={{ textAlign: "right" }}>
+      ₹{details.summary?.forecastedSalariesTotal?.toLocaleString() || 0}
+    </td>
+  </tr>
+  <tr style={{ borderTop: "2px solid #ddd" }}>
+    <td>
+      <strong>Projected Account Balance (Net Cash Flow)</strong>
+    </td>
+    <td
+      style={{
+        textAlign: "right",
+        fontWeight: "bold",
+        color:
+          (details.summary?.netCashFlow || 0) >= 0
+            ? "#16a34a"
+            : "#dc2626",
+      }}
+    >
+      ₹{details.summary?.netCashFlow?.toLocaleString() || 0}
+    </td>
+  </tr>
+</tbody>
+
+              </table>
+            </div>
+          </>
+        )}
+
+        <button
+          onClick={() => setModalOpen(false)}
+          style={{
+            backgroundColor: "#2563eb",
+            color: "white",
+            border: "none",
+            borderRadius: "6px",
+            padding: "8px 16px",
+            marginTop: "1.5rem",
+            cursor: "pointer",
+            display: "block",
+            marginLeft: "auto",
+            marginRight: "auto",
+          }}
+        >
+          Close
+        </button>
+      </>
+    )}
+  </div>
+</Modal>
+
+
 
     </div>
   );

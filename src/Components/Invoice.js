@@ -51,6 +51,8 @@ const [saveAlert, setSaveAlert] = useState(false);
 const [editingReceivedInvoice, setEditingReceivedInvoice] = useState(null);
 const [receivedModalOpen, setReceivedModalOpen] = useState(false);
 const [mode, setMode] = useState("Raised"); // "Raised" or "Received"
+const [calculatedValues,setCalculatedValues]= useState([]);
+const [billableError, setBillableError] = useState("");
 
 
 
@@ -155,15 +157,34 @@ const handleFormPreview = () => { setOpenPreview(true); };
   // Add invoice
 const handleAddInvoice = async () => {
   try {
+    // 🔹 Required fields validation
+    const requiredFields = [
+      { key: "invoice_date", label: "Invoice Date" },
+      { key: "start_date", label: "Start Date" },
+      { key: "end_date", label: "End Date" },
+      { key: "client_name", label: "Client Name" },
+      { key: "project_id", label: "Project" },
+    ];
+
+    const missing = requiredFields.filter(
+      (field) => !newInvoice[field.key] || newInvoice[field.key].toString().trim() === ""
+    );
+
+    if (missing.length > 0) {
+      const missingFields = missing.map((f) => f.label).join(", ");
+      alert(`⚠️ Please fill all mandatory fields:\n${missingFields}`);
+      return; // Stop execution
+    }
+
+    // 🔹 Prepare invoice data
     const invoiceToSend = {
       ...newInvoice,
-      invoice_value: Number(newInvoice.invoice_value) || 0,
-      gst_amount: Number(newInvoice.gst_amount) || 0,
-      total_value:
-        (Number(newInvoice.invoice_value) || 0) +
-        (Number(newInvoice.gst_amount) || 0),
+      invoice_value: Number(calculatedValues.invoice_value) || 0,
+      gst_amount: Number(calculatedValues.gst_amount) || 0,
+      tds_amount: Number(calculatedValues.tds_amount) || 0,
     };
 
+    // 🔹 Auto-calculate due_date based on payment terms
     if (invoiceToSend.invoice_date && selectedClient?.paymentTerms) {
       const totalDays = Number(selectedClient.paymentTerms) + 2;
       const d = new Date(invoiceToSend.invoice_date);
@@ -171,6 +192,7 @@ const handleAddInvoice = async () => {
       invoiceToSend.due_date = d.toISOString().split("T")[0];
     }
 
+    // 🔹 POST request to save invoice
     const res = await fetch("http://localhost:7760/invoices", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -183,7 +205,7 @@ const handleAddInvoice = async () => {
       fetchInvoices();
       setOpenDialog(false);
       setOpenPreview(false);
-
+      setCalculatedValues("");
       setNewInvoice({
         invoice_number: "",
         invoice_date: "",
@@ -192,26 +214,30 @@ const handleAddInvoice = async () => {
         start_date: "",
         end_date: "",
         invoice_cycle: "",
-        invoice_value: 0,  // ✅ default as number
-        gst_amount: 0,     // ✅ default as number
+        invoice_value: 0,
+        gst_amount: 0,
+        tds_amount: 0,
         due_date: "",
-        non_billable_days: 0,  // optional
+        non_billable_days: 0,
         received: "No",
         received_date: "",
       });
 
       fetchActiveProjects();
       fetchProjectsWithoutInvoice();
-    } else if (data.message === "Already Raised for this month for this project") {
-      alert("Invoice already raised for this project in the selected month.");
+    } else if (
+      data.message === "Already Raised for this month for this project"
+    ) {
+      alert("⚠️ Invoice already raised for this project in the selected month.");
     } else {
       alert(data.error || "Error adding invoice");
     }
   } catch (err) {
-    console.error("Request failed:", err);
+    console.error("❌ Request failed:", err);
     alert("Error adding invoice");
   }
 };
+
 
 
   const handleDownloadPDF = () => {
@@ -227,36 +253,6 @@ const handleAddInvoice = async () => {
   });
 };
 
-const calculateInvoiceValue = (cycle, billableDays, project, gstPercentage) => {
-  if (!project) return { invoiceValue: 0, gstAmount: 0 };
-
-  // Step 1: Base Invoice (Monthly / Quarterly)
-  let baseInvoice = 0;
-  if (cycle === "Monthly") {
-    baseInvoice = project.monthlyBilling || 0;
-  } else if (cycle === "Quarterly") {
-    baseInvoice = (project.monthlyBilling || 0) * 3;
-  }
-
-  // Step 2: Deduction for non-billable days
-  if (billableDays > 0) {
-    const dailyRate = (project.monthlyBilling || 0) / 30; // 30 days default
-    baseInvoice -= dailyRate * billableDays;
-  }
-
-  // Step 3: GST Calculation (using client GST)
-  const gstAmount = gstPercentage ? (baseInvoice * gstPercentage) / 100 : 0;
-
-  // Optional: set actual value (if you want to display in the summary)
-  if (typeof setActualValue === "function") {
-    setActualValue(project.monthlyBilling);
-  }
-
-  return {
-    invoiceValue: parseFloat(baseInvoice.toFixed(2)),
-    gstAmount: parseFloat(gstAmount.toFixed(2)),
-  };
-};
 
 const addDays = (dateStr, days) => {
   const date = new Date(dateStr);
@@ -384,20 +380,20 @@ const totalPending = receivedMonthInvoices.reduce(
   0
 );
 
-// Utility functions
-const getPrevMonthStart = (dateStr) => {
-  const date = dateStr ? new Date(dateStr) : new Date();
-  return new Date(date.getFullYear(), date.getMonth() - 1, 1)
-    .toISOString()
-    .split("T")[0];
-};
+// // Utility functions
+// const getPrevMonthStart = (dateStr) => {
+//   const date = dateStr ? new Date(dateStr) : new Date();
+//   return new Date(date.getFullYear(), date.getMonth() - 1, 1)
+//     .toISOString()
+//     .split("T")[0];
+// };
 
-const getPrevMonthEnd = (dateStr) => {
-  const date = dateStr ? new Date(dateStr) : new Date();
-  return new Date(date.getFullYear(), date.getMonth(), 0) // 0 = last day of prev month
-    .toISOString()
-    .split("T")[0];
-};
+// const getPrevMonthEnd = (dateStr) => {
+//   const date = dateStr ? new Date(dateStr) : new Date();
+//   return new Date(date.getFullYear(), date.getMonth(), 0) // 0 = last day of prev month
+//     .toISOString()
+//     .split("T")[0];
+// };
 
 useEffect(() => {
   if (isRaised && selectedProject?.invoiceCycle) {
@@ -599,6 +595,137 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
 
   return { canRaise, nextRaiseDate };
 };
+
+const calculateInvoiceValue = (cycle, billableDays, project) => {
+  try {
+    if (!project || Object.keys(project).length === 0) {
+      return {
+        base_value: 0,
+        gst_amount: 0,
+        tds_amount: 0,
+        invoice_value: 0,
+        non_billable_days: 0,
+      };
+    }
+
+    // Extract safely
+    const billingType = project.billingType || "Month";
+    const totalUnits = Number(project.hoursOrDays) || 0;
+    const totalBilling = Number(project.monthlyBilling) || 0;
+    const gst_percentage = parseFloat(project.gst) || 0;
+    const tds_percentage = parseFloat(project.tds) || 0;
+    const billable = Number(billableDays) || 0;
+
+    // 🧮 Step 1: Per-unit rate
+    let perUnitRate = 0;
+    if (billingType === "Day" || billingType === "Hour") {
+      perUnitRate = totalUnits > 0 ? totalBilling / totalUnits : 0;
+    } else {
+      perUnitRate = totalBilling;
+    }
+
+    // 💵 Step 2: Base value = rate * billable days (or full for Monthly)
+    const base_value =
+      billingType === "Month" ? perUnitRate : perUnitRate * billable;
+
+    // 📅 Step 3: Non-billable
+    const non_billable_days =
+      billingType === "Month" ? 0 : Math.max(0, totalUnits - billable);
+
+    // 💰 Step 4: Tax calculation — strictly on base value only
+    const gst_amount = (base_value * gst_percentage) / 100;
+    const tds_amount = (base_value * tds_percentage) / 100;
+
+    // 🧾 Step 5: Final Total (Base + GST − TDS)
+    const invoice_value = base_value + gst_amount - tds_amount;
+console.log(`Base=${base_value}, GST=${gst_amount}, TDS=${tds_amount}, Total=${invoice_value}`);
+
+    return {
+      base_value: Math.round(base_value),
+      gst_amount: Math.round(gst_amount),
+      tds_amount: Math.round(tds_amount),
+      invoice_value: Math.round(invoice_value),
+      non_billable_days,
+    };
+    
+  } catch (err) {
+    console.error("❌ Error calculating invoice:", err);
+    return {
+      base_value: 0,
+      gst_amount: 0,
+      tds_amount: 0,
+      invoice_value: 0,
+      non_billable_days: 0,
+    };
+  }
+};
+
+
+
+const handleBillableChange = (e) => {
+  const billable = Number(e.target.value) || 0;
+
+  if (!selectedProject || Object.keys(selectedProject).length === 0) {
+    console.warn("⚠️ selectedProject not loaded yet");
+    return;
+  }
+
+  const totalUnits = Number(selectedProject.hoursOrDays) || 0;
+
+  // ❌ Validation: Prevent exceeding the limit
+  if (billable > totalUnits) {
+    setBillableError(
+      `Billable ${selectedProject.billingType === "Hour" ? "hours" : "days"} cannot exceed ${totalUnits}.`
+    );
+    return;
+  } else {
+    setBillableError(""); // clear error
+  }
+
+  // ✅ Continue normal calculation
+  const calc = calculateInvoiceValue(
+    newInvoice.invoice_cycle,
+    billable,
+    selectedProject
+  );
+
+  setNewInvoice((prev) => ({
+    ...prev,
+    billable_days: billable,
+    non_billable_days: calc.non_billable_days,
+    base_value: calc.base_value,
+    gst_amount: calc.gst_amount,
+    tds_amount: calc.tds_amount,
+    invoice_value: calc.invoice_value,
+  }));
+
+  setCalculatedValues(calc);
+};
+
+
+useEffect(() => {
+  if (selectedProject && selectedProject.billingType === "Month") {
+    // Automatically calculate monthly invoice
+    const calc = calculateInvoiceValue(
+      selectedProject.invoiceCycle || "Monthly",
+      0, // billable days not relevant for Monthly type
+      selectedProject
+    );
+
+    setNewInvoice((prev) => ({
+      ...prev,
+      billable_days: 0,
+      non_billable_days: 0,
+      base_value: calc.base_value,
+      gst_amount: calc.gst_amount,
+      tds_amount: calc.tds_amount,
+      invoice_value: calc.invoice_value,
+    }));
+
+    setCalculatedValues(calc);
+  }
+}, [selectedProject]);
+
 
 
 
@@ -891,7 +1018,7 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
               setSelectedClient(client || null);
               setProjects(client?.projects || []);
               setSelectedProject(proj);
-
+            
               const now = new Date();
               const m = String(now.getMonth() + 1).padStart(2, "0");
               const y = now.getFullYear();
@@ -922,6 +1049,8 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
               setIsRaised(true);
               setOpenDialog(true);
               handleRaise(invoiceData);
+              console.log(invoiceData)
+              console.log(selectedProject)
             }}
           >
             Raise
@@ -961,77 +1090,217 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
   maxWidth="sm"
   fullWidth
 >
-  <DialogTitle style={{fontWeight:"bold",fontFamily:"monospace"}}>Project Details</DialogTitle>
-  <DialogContent dividers style={{ maxHeight: "400px", overflowY: "auto" }}>
+  {/* 🧾 Title */}
+  <DialogTitle
+    style={{
+      fontWeight: "bold",
+      fontFamily: "monospace",
+      textAlign: "center",
+      backgroundColor: "#f3f4f6",
+      borderBottom: "1px solid #e5e7eb",
+      fontSize: "1.25rem",
+      letterSpacing: "0.5px",
+    }}
+  >
+    Project Details
+  </DialogTitle>
+
+  {/* 🧩 Main Content */}
+  <DialogContent
+    dividers
+    style={{
+      maxHeight: "450px",
+      overflowY: "auto",
+      backgroundColor: "#fafafa",
+      padding: "1.5rem",
+    }}
+  >
     {selectedProjectDetails ? (
-      <Table size="small">
-      <TableBody>
-  {Object.entries(selectedProjectDetails)
-    .filter(([key]) =>
-      [
-        "projectID",
-        "clientID",
-        "startDate",
-        "endDate",
-        "projectName",
-        "projectDescription",
-        "skill",
-        "projectLocation",
-        "spoc",
-        "mailID",
-        "mobileNo",
-        "billingType",
-        "billRate",
-        "monthlyBilling",
-        "employeeID",
-        "employeeName",
-        "poNumber",
-        "purchaseOrder", // file
-        "purchaseOrderValue",
-        "active",
-        "invoiceCycle",
-      ].includes(key)
-    )
-    .map(([key, value]) => (
-      <TableRow key={key}>
-        <TableCell style={{ fontWeight: "bold", width: "40%" }}>
-          {key
-            .replace(/([A-Z])/g, " $1")
-            .replace(/^./, (str) => str.toUpperCase())}
-        </TableCell>
-        <TableCell>
-          {key === "purchaseOrder" ? (
-            value ? (
-              <a
-                href={`http://localhost:7760/uploads/${value}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Open File
-              </a>
-            ) : (
-              "No File"
-            )
-          ) : key.toLowerCase().includes("date") && value ? (
-            new Date(value).toLocaleDateString("en-GB")
-          ) : key.toLowerCase().includes("value") || key.toLowerCase().includes("rate") ? (
-            new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(value)
-          ) : value || "-"}
-        </TableCell>
-      </TableRow>
-    ))}
-</TableBody>
+      <>
+        {/* === 1️⃣ Project Information === */}
+        <Typography
+          variant="h6"
+          style={{
+            fontWeight: "bold",
+            marginBottom: "8px",
+            color: "#1f2937",
+            borderBottom: "2px solid #e5e7eb",
+          }}
+        >
+          🏗️ Project Information
+        </Typography>
+        <Table size="small">
+          <TableBody>
+            {[
+              ["Project ID", selectedProjectDetails.projectID],
+              ["Project Name", selectedProjectDetails.projectName],
+              ["Project Description", selectedProjectDetails.projectDescription],
+              ["Skill", selectedProjectDetails.skill],
+              ["Location", selectedProjectDetails.projectLocation],
+              [
+                "Start Date",
+                selectedProjectDetails.startDate
+                  ? new Date(selectedProjectDetails.startDate).toLocaleDateString("en-GB")
+                  : "-",
+              ],
+              [
+                "End Date",
+                selectedProjectDetails.endDate
+                  ? new Date(selectedProjectDetails.endDate).toLocaleDateString("en-GB")
+                  : "-",
+              ],
+              ["Active", selectedProjectDetails.active || "-"],
+            ].map(([label, value]) => (
+              <TableRow key={label}>
+                <TableCell style={{ fontWeight: "bold", width: "45%", color: "#374151" }}>
+                  {label}
+                </TableCell>
+                <TableCell style={{ color: "#111827" }}>{value || "-"}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
 
+        {/* === 2️⃣ Billing Details === */}
+        <Typography
+          variant="h6"
+          style={{
+            fontWeight: "bold",
+            margin: "16px 0 8px",
+            color: "#1f2937",
+            borderBottom: "2px solid #e5e7eb",
+          }}
+        >
+          💰 Billing Details
+        </Typography>
+        <Table size="small">
+          <TableBody>
+            {[
+              ["Billing Type", selectedProjectDetails.billingType],
+              [
+                "Bill Rate",
+                new Intl.NumberFormat("en-IN", {
+                  style: "currency",
+                  currency: "INR",
+                }).format(selectedProjectDetails.billRate || 0),
+              ],
+              [
+                "Monthly Billing",
+                new Intl.NumberFormat("en-IN", {
+                  style: "currency",
+                  currency: "INR",
+                }).format(selectedProjectDetails.monthlyBilling || 0),
+              ],
+              ["Invoice Cycle", selectedProjectDetails.invoiceCycle || "-"],
+              [`GST`, `${parseFloat(selectedProjectDetails.gst || 0)}%`],
+              [`TDS`, `${parseFloat(selectedProjectDetails.tds || 0)}%`],
+              [
+                "Net Payable",
+                new Intl.NumberFormat("en-IN", {
+                  style: "currency",
+                  currency: "INR",
+                }).format(selectedProjectDetails.netPayable || 0),
+              ],
+              [
+                "PO Number",
+                selectedProjectDetails.poNumber || "-",
+              ],
+              [
+                "Purchase Order Value",
+                new Intl.NumberFormat("en-IN", {
+                  style: "currency",
+                  currency: "INR",
+                }).format(selectedProjectDetails.purchaseOrderValue || 0),
+              ],
+              [
+                "Purchase Order File",
+                selectedProjectDetails.purchaseOrder ? (
+                  <a
+                    href={`http://localhost:7760/uploads/${selectedProjectDetails.purchaseOrder}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Open File
+                  </a>
+                ) : (
+                  "No File"
+                ),
+              ],
+            ].map(([label, value]) => (
+              <TableRow key={label}>
+                <TableCell style={{ fontWeight: "bold", width: "45%", color: "#374151" }}>
+                  {label}
+                </TableCell>
+                <TableCell style={{ color: "#111827" }}>{value || "-"}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
 
-      </Table>
+        {/* === 3️⃣ SPOC & Contact Information === */}
+        <Typography
+          variant="h6"
+          style={{
+            fontWeight: "bold",
+            margin: "16px 0 8px",
+            color: "#1f2937",
+            borderBottom: "2px solid #e5e7eb",
+          }}
+        >
+          📞 SPOC / Contact Information
+        </Typography>
+        <Table size="small">
+          <TableBody>
+            {[
+              ["SPOC", selectedProjectDetails.spoc],
+              ["Email", selectedProjectDetails.mailID],
+              ["Mobile No", selectedProjectDetails.mobileNo],
+              ["Employee ID", selectedProjectDetails.employeeID],
+              ["Employee Name", selectedProjectDetails.employeeName],
+            ].map(([label, value]) => (
+              <TableRow key={label}>
+                <TableCell style={{ fontWeight: "bold", width: "45%", color: "#374151" }}>
+                  {label}
+                </TableCell>
+                <TableCell style={{ color: "#111827" }}>{value || "-"}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </>
     ) : (
-      <Typography>No project details available</Typography>
+      <Typography
+        style={{
+          textAlign: "center",
+          color: "#6b7280",
+          fontStyle: "italic",
+          padding: "1rem 0",
+        }}
+      >
+        No project details available
+      </Typography>
     )}
   </DialogContent>
-  <DialogActions>
-    <Button onClick={() => setOpenProjectModal(false)}>Close</Button>
+
+  <DialogActions style={{ justifyContent: "center", padding: "1rem" }}>
+    <Button
+      variant="contained"
+      onClick={() => setOpenProjectModal(false)}
+      style={{
+        backgroundColor: "#2563eb",
+        color: "white",
+        textTransform: "none",
+        fontWeight: "bold",
+        borderRadius: "8px",
+        padding: "6px 16px",
+      }}
+    >
+      Close
+    </Button>
   </DialogActions>
 </Dialog>
+
+
 
     {/* Raised Invoices Table */}
     {view === "invoices" && (
@@ -1753,6 +2022,7 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
           const data = await response.json();
           setSelectedClient(data.client);
           setProjects(data.projects);
+          console.log(data.projects);
 
           // Regenerate invoice number if project already selected
           if (newInvoice.project_id) {
@@ -1891,7 +2161,7 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
   type="date"
   fullWidth
   label="Start Date"
-  value={newInvoice.start_date || getPrevMonthStart(newInvoice.invoice_date)}
+  value={newInvoice.start_date }
   onChange={(e) =>
     setNewInvoice({ ...newInvoice, start_date: e.target.value })
   }
@@ -1909,7 +2179,7 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
   type="date"
   fullWidth
   label="End Date"
-  value={newInvoice.end_date || getPrevMonthEnd(newInvoice.invoice_date)}
+  value={newInvoice.end_date }
   onChange={(e) =>
     setNewInvoice({ ...newInvoice, end_date: e.target.value })
   }
@@ -1922,108 +2192,105 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
     },
   }}
 />
- <TextField
-  fullWidth
-  label="Invoice Cycle"
-  inputProps={{readOnly:true}}
-  value={newInvoice.invoice_cycle}
-  onChange={(e) => {
-    const cycle = e.target.value;
-    const { invoiceValue, gstAmount } = calculateInvoiceValue(
-      cycle,
-      newInvoice.non_billable_days,
-      selectedProject,
-      selectedClient?.gstPercentage
-    );
+ 
 
-    setNewInvoice({
-      ...newInvoice,
-      invoice_cycle: cycle,
-      invoice_value: invoiceValue,
-      gst_amount: gstAmount,
-    });
-  }}
+</div>
+
+<div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
+  <div style={{ display: "flex", gap: 10 }}>
+    {/* Billable Days / Hours */}
+    <TextField
+  fullWidth
+  type="number"
+  label={selectedProject?.billingType === "Hour" ? "Billable Hours" : "Billable Days"}
+  value={newInvoice.billable_days || ""}
+  onChange={handleBillableChange}
+  disabled={selectedProject?.billingType === "Month"}
+  error={!!billableError}
+  helperText={
+    selectedProject?.billingType === "Month"
+      ? "Monthly billing is fixed — manual entry not required."
+      : billableError || ""
+  }
   sx={{
     "& .MuiOutlinedInput-root": {
       "& fieldset": { borderColor: "black" },
       "&:hover fieldset": { borderColor: "black" },
       "&.Mui-focused fieldset": { borderColor: "black" },
+      backgroundColor:
+        selectedProject?.billingType === "Month" ? "#f3f4f6" : "white", // light grey for disabled
+    },
+    "& .Mui-disabled": {
+      WebkitTextFillColor: "#4b5563", // darker grey text color
+    },
+    "& .MuiFormHelperText-root": {
+      fontStyle:
+        selectedProject?.billingType === "Month" ? "italic" : "normal",
+      color:
+        selectedProject?.billingType === "Month"
+          ? "#6b7280"
+          : billableError
+          ? "#dc2626"
+          : "#6b7280",
     },
   }}
 />
 
+
+    {/* Non-Billable Days / Hours */}
+    <TextField
+      fullWidth
+      type="number"
+      label={selectedProject?.billingType === "Hour" ? "Non-Billable Hours" : "Non-Billable Days"}
+      value={newInvoice.non_billable_days || ""}
+      InputProps={{ readOnly: true }}
+      disabled={selectedProject?.billingType === "Month"}
+      sx={{
+        "& .MuiOutlinedInput-root": {
+          "& fieldset": { borderColor: "black" },
+          "&:hover fieldset": { borderColor: "black" },
+          "&.Mui-focused fieldset": { borderColor: "black" },
+        },
+      }}
+    />
+  
+
+  </div>
+</div>
+ <div
+  style={{
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+  }}
+>
+  <label
+    style={{
+      fontWeight: "bold",
+      color: "#374151",
+      fontSize: "0.9rem",
+      marginBottom: "4px",
+    }}
+  >
+    Invoice Cycle
+  </label>
+  <div
+    style={{
+      border: "1px solid black",
+      borderRadius: "6px",
+      padding: "10px 12px",
+      backgroundColor: "#f9fafb",
+      fontSize: "0.95rem",
+      color: "#111827",
+      fontFamily: "Arial, sans-serif",
+    }}
+  >
+    {newInvoice.invoice_cycle || "—"}
+  </div>
 </div>
 
-    {/* Row 4: Invoice Cycle */}
-    {/* <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-    
-     
-      <TextField
-        select
-        fullWidth
-        label="Received"
-        value={newInvoice.received}
-        onChange={(e) =>
-          setNewInvoice({ ...newInvoice, received: e.target.value })
-        }
-        sx={{
-          "& .MuiOutlinedInput-root": {
-            "& fieldset": { borderColor: "black" },
-            "&:hover fieldset": { borderColor: "black" },
-            "&.Mui-focused fieldset": { borderColor: "black" },
-          },
-        }}
-      >
-        <MenuItem value="Yes">Yes</MenuItem>
-        <MenuItem value="No">No</MenuItem>
-      </TextField>
-    </div> */}
-<div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-   <TextField
-        fullWidth
-        label="Billable Days"
-        type="text"
-        value={newInvoice.billable_days}
-       
-        sx={{
-          "& .MuiOutlinedInput-root": {
-            "& fieldset": { borderColor: "black" },
-            "&:hover fieldset": { borderColor: "black" },
-            "&.Mui-focused fieldset": { borderColor: "black" },
-          },
-        }}
-      />
-      <TextField
-        fullWidth
-        label="Non-Billable Days"
-        type="text"
-        value={newInvoice.non_billable_days}
-        onChange={(e) => {
-          const days = parseInt(e.target.value) || 0;
-          const { invoiceValue, gstAmount } = calculateInvoiceValue(
-            newInvoice.invoice_cycle,
-            days,
-            selectedProject,
-            selectedClient?.gstPercentage
-          );
 
-          setNewInvoice({
-            ...newInvoice,
-            non_billable_days: days,
-            invoice_value: invoiceValue,
-            gst_amount: gstAmount,
-          });
-        }}
-        sx={{
-          "& .MuiOutlinedInput-root": {
-            "& fieldset": { borderColor: "black" },
-            "&:hover fieldset": { borderColor: "black" },
-            "&.Mui-focused fieldset": { borderColor: "black" },
-          },
-        }}
-      />
-
-</div>
 
     {/* Conditional Row: Received Date */}
     {newInvoice.received === "Yes" && (
@@ -2049,71 +2316,187 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
     )}
   </DialogContent>
    {/* Invoice Summary Table */}
-<div style={{ marginBottom: 10 }}>
-  <Table size="small">
+<div
+  style={{
+    marginTop: "1rem",
+    background: "linear-gradient(180deg, #f9fafb 0%, #f3f4f6 100%)",
+    borderRadius: "12px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+    padding: "1rem 1.5rem",
+  }}
+>
+  
+  <Table
+    size="small"
+    style={{
+      borderCollapse: "separate",
+      borderSpacing: "0 10px",
+      width: "100%",
+    }}
+  >
     <TableBody>
-       <TableRow style={{ backgroundColor: "#edd4d4ff" }}> {/* light green */}
-  <TableCell style={{ fontWeight: "bold" }}>Actual Monthly Value</TableCell>
-  <TableCell>
-    {actualValue
-      ? new Intl.NumberFormat("en-IN", {
-          style: "currency",
-          currency: "INR",
-          maximumFractionDigits: 0,
-        }).format(actualValue)
-      : "-"}
-  </TableCell>
-</TableRow> 
-<center><Divider style={{margin:"10px",fontWeight:"bold"}}>Breakdown Table</Divider>
-</center>
-      <TableRow style={{ backgroundColor: "#d4e0edff" }}>
-  <TableCell style={{ fontWeight: "bold" }}>Invoice Value</TableCell>
-  <TableCell style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-    <span>
-      {newInvoice.invoice_value
-        ? new Intl.NumberFormat("en-IN", {
-            style: "currency",
-            currency: "INR",
-            maximumFractionDigits: 0,
-          }).format(newInvoice.invoice_value)
-        : "₹0"}
-    </span>
-    {actualValue && newInvoice.invoice_value && (
-      <span style={{ fontSize: "0.75rem", color: "#555" }}>
-        Diff: {new Intl.NumberFormat("en-IN", {
-          style: "currency",
-          currency: "INR",
-          maximumFractionDigits: 0,
-        }).format(actualValue - newInvoice.invoice_value)}
-      </span>
-    )}
-  </TableCell>
-</TableRow>
-
-      <TableRow style={{ backgroundColor: "#cacecbff" }}>
-        <TableCell style={{ fontWeight: "bold" }}>GST Amount</TableCell>
+      {/* Base Value */}
+      <TableRow
+        style={{
+          backgroundColor: "#fff",
+          borderRadius: "10px",
+          boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
+        }}
+      >
+        <TableCell style={{ fontWeight: "bold", color: "#374151", width: "60%" }}>
+          Base Value (Before Tax)
+        </TableCell>
         <TableCell>
-          {newInvoice.gst_amount
-            ? new Intl.NumberFormat("en-IN", {
-                style: "currency",
-                currency: "INR",
-                maximumFractionDigits: 0,
-              }).format(newInvoice.gst_amount)
-            : "₹0"}
+          <TextField
+            variant="outlined"
+            type="number"
+            size="small"
+            value={newInvoice.base_value ?? calculatedValues.base_value ?? 0}
+            onChange={(e) => {
+              const base = Number(e.target.value) || 0;
+              const gst = newInvoice.gst_amount ?? calculatedValues.gst_amount ?? 0;
+              const tds = newInvoice.tds_amount ?? calculatedValues.tds_amount ?? 0;
+              const total = base + gst - tds;
+
+              setNewInvoice((prev) => ({
+                ...prev,
+                base_value: base,
+                invoice_value: total,
+              }));
+              setCalculatedValues((prev) => ({
+                ...prev,
+                base_value: base,
+                invoice_value: total,
+              }));
+            }}
+            InputProps={{
+              startAdornment: (
+                <span style={{ marginRight: "5px", color: "#6b7280" }}>₹</span>
+              ),
+            }}
+            sx={{
+              "& .MuiOutlinedInput-root": {
+                height: 35,
+                fontSize: "0.9rem",
+              },
+            }}
+          />
         </TableCell>
       </TableRow>
-     
 
-      <TableRow style={{ backgroundColor: "#ddedd4ff" }}>
-        <TableCell style={{ fontWeight: "bold" }}>Total</TableCell>
+      {/* GST Amount */}
+      <TableRow
+        style={{
+          backgroundColor: "#f0fdf4",
+          borderRadius: "10px",
+          boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
+        }}
+      >
+        <TableCell style={{ fontWeight: "bold", color: "#15803d" }}>
+          GST Amount (+)
+        </TableCell>
         <TableCell>
-          {new Intl.NumberFormat("en-IN", {
-            style: "currency",
-            currency: "INR",
-            maximumFractionDigits: 0,
-          }).format(
-            (Number(newInvoice.invoice_value) || 0) +
-            (Number(newInvoice.gst_amount) || 0)
+          <TextField
+            variant="outlined"
+            type="number"
+            size="small"
+            value={newInvoice.gst_amount ?? calculatedValues.gst_amount ?? 0}
+            onChange={(e) => {
+              const gst = Number(e.target.value) || 0;
+              const base = newInvoice.base_value ?? calculatedValues.base_value ?? 0;
+              const tds = newInvoice.tds_amount ?? calculatedValues.tds_amount ?? 0;
+              const total = base + gst - tds;
+
+              setNewInvoice((prev) => ({
+                ...prev,
+                gst_amount: gst,
+                invoice_value: total,
+              }));
+              setCalculatedValues((prev) => ({
+                ...prev,
+                gst_amount: gst,
+                invoice_value: total,
+              }));
+            }}
+            InputProps={{
+              startAdornment: (
+                <span style={{ marginRight: "5px", color: "#16a34a" }}>₹</span>
+              ),
+            }}
+            sx={{
+              "& .MuiOutlinedInput-root": {
+                height: 35,
+                fontSize: "0.9rem",
+              },
+            }}
+          />
+        </TableCell>
+      </TableRow>
+
+      {/* TDS Amount */}
+      <TableRow
+        style={{
+          backgroundColor: "#fef2f2",
+          borderRadius: "10px",
+          boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
+        }}
+      >
+        <TableCell style={{ fontWeight: "bold", color: "#b91c1c" }}>
+          TDS Deduction (−)
+        </TableCell>
+        <TableCell>
+          <TextField
+            variant="outlined"
+            type="number"
+            size="small"
+            value={newInvoice.tds_amount ?? calculatedValues.tds_amount ?? 0}
+            onChange={(e) => {
+              const tds = Number(e.target.value) || 0;
+              const base = newInvoice.base_value ?? calculatedValues.base_value ?? 0;
+              const gst = newInvoice.gst_amount ?? calculatedValues.gst_amount ?? 0;
+              const total = base + gst - tds;
+
+              setNewInvoice((prev) => ({
+                ...prev,
+                tds_amount: tds,
+                invoice_value: total,
+              }));
+              setCalculatedValues((prev) => ({
+                ...prev,
+                tds_amount: tds,
+                invoice_value: total,
+              }));
+            }}
+            InputProps={{
+              startAdornment: (
+                <span style={{ marginRight: "5px", color: "#dc2626" }}>₹</span>
+              ),
+            }}
+            sx={{
+              "& .MuiOutlinedInput-root": {
+                height: 35,
+                fontSize: "0.9rem",
+              },
+            }}
+          />
+        </TableCell>
+      </TableRow>
+
+      {/* Total */}
+      <TableRow
+        style={{
+          backgroundColor: "#ecfdf5",
+          borderRadius: "10px",
+          boxShadow: "0 2px 8px rgba(16,185,129,0.2)",
+        }}
+      >
+        <TableCell style={{ fontWeight: "bold", color: "#065f46" }}>
+          Total (Base + GST − TDS)
+        </TableCell>
+        <TableCell style={{ fontWeight: "bold", color: "#047857", fontSize: "1rem" }}>
+          ₹
+          {(newInvoice.invoice_value ?? calculatedValues.invoice_value ?? 0).toLocaleString(
+            "en-IN"
           )}
         </TableCell>
       </TableRow>
@@ -2121,8 +2504,12 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
   </Table>
 </div>
 
+
+
+
+
   <DialogActions>
-    <Button onClick={() => {setOpenDialog(false);resetForm();setIsRaised(false)}}>Cancel</Button>
+    <Button onClick={() => {setOpenDialog(false);resetForm();setIsRaised(false);setCalculatedValues("")}}>Cancel</Button>
     <Button variant="outlined" color="success" onClick={()=>{handleAddInvoice()}}>
       Save
     </Button>
@@ -2263,8 +2650,9 @@ onClose={() => {
                   }}
                 >
                   {new Intl.NumberFormat("en-IN").format(
-                    invoice.invoice_value || 0
-                  )}
+                      (Number(invoice.invoice_value) || 0) -
+                        (Number(invoice.gst_amount) || 0)
+                    )}
                 </td>
               </tr>
               <tr>
@@ -2294,8 +2682,7 @@ onClose={() => {
                 >
                   <strong>
                     {new Intl.NumberFormat("en-IN").format(
-                      (Number(invoice.invoice_value) || 0) +
-                        (Number(invoice.gst_amount) || 0)
+                      (Number(invoice.invoice_value) || 0) 
                     )}
                   </strong>
                 </td>
