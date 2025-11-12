@@ -1,5 +1,18 @@
-import axios from "axios";
 import React, { useEffect, useState } from "react";
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Grid,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  CircularProgress,
+  Button,
+  Stack,
+} from "@mui/material";
 import {
   LineChart,
   Line,
@@ -9,264 +22,229 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  BarChart,
+  Bar,
 } from "recharts";
 
-function ForcastingDashboard() {
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import dayjs from "dayjs";
+
+const API_BASE = "http://localhost:7760/api/forecast";
+
+const ForecastingDashboard = () => {
+  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState({});
   const [data, setData] = useState([]);
-  const [monthsBack, setMonthsBack] = useState(6);
-  const [monthsAhead, setMonthsAhead] = useState(6);
-  const [loading, setLoading] = useState(false);
+  const [view, setView] = useState("monthly");
+  const [chartType, setChartType] = useState("line");
 
-  // 📊 Fetch and process forecast data from backend (includes salaries)
-  const fetchForecastData = async (back = monthsBack, ahead = monthsAhead) => {
+  // ✅ Date states
+  const [selectedDate, setSelectedDate] = useState(dayjs());
+  const [startDate, setStartDate] = useState(dayjs().startOf("month"));
+  const [endDate, setEndDate] = useState(dayjs().endOf("month"));
+
+  // ✅ Fetch summary
+  const fetchSummary = async () => {
     try {
-      setLoading(true);
-      const res = await axios.get("http://localhost:7760/forecast", {
-        params: { monthsBack: back, monthsAhead: ahead },
-      });
-
-      const {
-        pastIncome = [],
-        futureIncome = [],
-        pastExpenses = [],
-        futureExpenses = [],
-      } = res.data || {};
-
-      const merged = {};
-
-      pastIncome.forEach((i) => {
-        if (!i.month) return;
-        if (!merged[i.month]) merged[i.month] = { month: i.month };
-        merged[i.month].actualIncome = i.total_income || 0;
-      });
-
-      futureIncome.forEach((i) => {
-        if (!i.month) return;
-        if (!merged[i.month]) merged[i.month] = { month: i.month };
-        merged[i.month].expectedIncome = i.expected_income || 0;
-      });
-
-      pastExpenses.forEach((e) => {
-        if (!e.month) return;
-        if (!merged[e.month]) merged[e.month] = { month: e.month };
-        merged[e.month].actualExpense =
-          (merged[e.month].actualExpense || 0) +
-          (e.total_expense || 0) +
-          (e.total_salaries || 0);
-      });
-
-      futureExpenses.forEach((e) => {
-        if (!e.month) return;
-        if (!merged[e.month]) merged[e.month] = { month: e.month };
-        merged[e.month].expectedExpense =
-          (merged[e.month].expectedExpense || 0) + (e.expected_expense || 0);
-      });
-
-      const result = Object.values(merged)
-        .filter((d) => d.month)
-        .map((d) => ({
-          month: d.month,
-          income: (d.actualIncome || 0) + (d.expectedIncome || 0),
-          expense: (d.actualExpense || 0) + (d.expectedExpense || 0),
-          actualIncome: d.actualIncome || 0,
-          expectedIncome: d.expectedIncome || 0,
-          actualExpense: d.actualExpense || 0,
-          expectedExpense: d.expectedExpense || 0,
-          netCashFlow:
-            (d.actualIncome || d.expectedIncome || 0) -
-            (d.actualExpense || d.expectedExpense || 0),
-        }))
-        .sort((a, b) => (a.month || "").localeCompare(b.month || ""));
-
-      setData(result);
-      setLoading(false);
+      const res = await fetch(`${API_BASE}/summary`);
+      const json = await res.json();
+      setSummary(json);
     } catch (err) {
-      console.error("❌ Error fetching forecast:", err);
+      console.error("Error fetching summary:", err);
+    }
+  };
+
+  // ✅ Fetch forecast data
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      let url = `${API_BASE}/${view}`;
+      if (view === "daily" || view === "weekly" || view === "monthly") {
+        url += `?start=${startDate.format("YYYY-MM-DD")}&end=${endDate.format(
+          "YYYY-MM-DD"
+        )}`;
+      }
+
+      const res = await fetch(url);
+      const json = await res.json();
+      setData(json);
+    } catch (err) {
+      console.error("Error fetching forecast:", err);
+    } finally {
       setLoading(false);
-      setData([]);
     }
   };
 
   useEffect(() => {
-    fetchForecastData();
-  }, []);
+    fetchSummary();
+    fetchData();
+  }, [view, selectedDate, startDate, endDate]);
 
-  // 🔁 Refresh chart whenever range changes
-  const handleRangeChange = () => {
-    fetchForecastData(monthsBack, monthsAhead);
+  // ✅ Chart Rendering
+  const renderChart = () => {
+    if (loading) return <CircularProgress />;
+    if (!data.length)
+      return (
+        <Typography variant="body1" color="text.secondary">
+          No data available.
+        </Typography>
+      );
+
+    const xKey =
+      view === "daily"
+        ? "day"
+        : view === "weekly"
+        ? "week_key"
+        : view === "yearly"
+        ? "year"
+        : "month";
+
+    return (
+      <ResponsiveContainer width="100%" height={400}>
+        {chartType === "line" ? (
+          <LineChart data={data}>
+  <CartesianGrid strokeDasharray="3 3" />
+  <XAxis dataKey={xKey} />
+  <YAxis />
+  <Tooltip />
+  <Legend />
+  <Line type="monotone" dataKey="actual_income" stroke="#2e7d32" name="Actual Income" />
+  <Line type="monotone" dataKey="forecasted_income" stroke="#81c784" name="Forecasted Income" />
+  <Line type="monotone" dataKey="actual_expense" stroke="#c62828" name="Actual Expense" />
+  <Line type="monotone" dataKey="forecasted_expense" stroke="#ef9a9a" name="Forecasted Expense" />
+  <Line type="monotone" dataKey="actual_netflow" stroke="#1565c0" name="Netflow" />
+</LineChart>
+
+        ) : (
+          <BarChart data={data}>
+  <CartesianGrid strokeDasharray="3 3" />
+  <XAxis dataKey={xKey} />
+  <YAxis />
+  <Tooltip />
+  <Legend />
+  <Bar dataKey="actual_income" fill="#2e7d32" name="Actual Income" />
+  <Bar dataKey="forecasted_income" fill="#81c784" name="Forecasted Income" />
+  <Bar dataKey="actual_expense" fill="#c62828" name="Actual Expense" />
+  <Bar dataKey="forecasted_expense" fill="#ef9a9a" name="Forecasted Expense" />
+  <Bar dataKey="actual_netflow" fill="#1565c0" name="Netflow" />
+</BarChart>
+
+        )}
+      </ResponsiveContainer>
+    );
   };
 
   return (
-    <div
-      style={{
-        background: "#f9fafb",
-        padding: "2rem",
-        marginLeft: "10px",
-        marginTop: "30px",
-        width:"1000px"
-      }}
-    >
-      <h2
-        style={{
-          textAlign: "center",
-          fontWeight: "bold",
-          fontSize: "1.5rem",
-          color: "#1f2937",
-        }}
-      >
-        📈 Monthly Income vs Outgoings (Expenses + Salaries)
-      </h2>
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h4" gutterBottom fontWeight="bold">
+        Forecasting Dashboard
+      </Typography>
 
-      {/* 🔧 Filters Section */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          gap: "1rem",
-          alignItems: "center",
-          margin: "1.5rem 0",
-          backgroundColor:"lightgray",
-          padding:"7px",
-          borderRadius:"8px"
-        }}
-      >
-        <div>
-          <label style={{ fontWeight: "500" }}>Months Back: </label>
-          <input
-            type="number"
-            min="0"
-            max="36"
-            value={monthsBack}
-            onChange={(e) => setMonthsBack(parseInt(e.target.value))}
-            style={{
-              padding: "6px",
-              width: "80px",
-              borderRadius: "6px",
-              border: "1px solid #ccc",
-            }}
-          />
-        </div>
+      {/* Summary Cards */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ bgcolor: "#e8f5e9" }}>
+            <CardContent>
+              <Typography variant="subtitle1">Total Actual Income</Typography>
+              <Typography variant="h6" fontWeight="bold">
+                ₹{summary.total_actual_income?.toLocaleString() || 0}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
 
-        <div>
-          <label style={{ fontWeight: "500" }}>Months Ahead: </label>
-          <input
-            type="number"
-            min="0"
-            max="36"
-            value={monthsAhead}
-            onChange={(e) => setMonthsAhead(parseInt(e.target.value))}
-            style={{
-              padding: "6px",
-              width: "80px",
-              borderRadius: "6px",
-              border: "1px solid #ccc",
-            }}
-          />
-        </div>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ bgcolor: "#e3f2fd" }}>
+            <CardContent>
+              <Typography variant="subtitle1">Forecast Income</Typography>
+              <Typography variant="h6" fontWeight="bold">
+                ₹{summary.total_forecast_income?.toLocaleString() || 0}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
 
-        <button
-          onClick={handleRangeChange}
-          style={{
-            backgroundColor: "#2563eb",
-            color: "white",
-            border: "none",
-            borderRadius: "8px",
-            padding: "8px 16px",
-            cursor: "pointer",
-            fontWeight: "500",
-          }}
-        >
-          🔄 Refresh
-        </button>
-      </div>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ bgcolor: "#ffebee" }}>
+            <CardContent>
+              <Typography variant="subtitle1">Total Expense</Typography>
+              <Typography variant="h6" fontWeight="bold">
+                ₹{summary.total_actual_expense?.toLocaleString() || 0}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
 
-      {loading ? (
-        <p style={{ textAlign: "center", color: "#6b7280" }}>
-          ⏳ Loading forecast data...
-        </p>
-      ) : data.length === 0 ? (
-        <p style={{ textAlign: "center", color: "#9ca3af" }}>
-          No data available for the selected period.
-        </p>
-      ) : (
-        <div
-          style={{
-            width: "95%",
-            height: 450,
-            background: "rgba(160, 225, 252, 0.58)",
-            borderRadius: "12px",
-            padding: "1rem",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-          }}
-        >
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ bgcolor: "#fff8e1" }}>
+            <CardContent>
+              <Typography variant="subtitle1">Recurring Expense</Typography>
+              <Typography variant="h6" fontWeight="bold">
+                ₹{summary.recurring_expense?.toLocaleString() || 0}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
 
-              {/* ✅ Actual Income */}
-              <Line
-                type="monotone"
-                dataKey="actualIncome"
-                stroke="#16a34a"
-                strokeWidth={3}
-                dot={{ r: 4 }}
-                activeDot={{ r: 6 }}
-                name="Actual Income"
+      {/* Filters */}
+      <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 3 }}>
+        <FormControl sx={{ minWidth: 150 }}>
+          <InputLabel>Period</InputLabel>
+          <Select
+            value={view}
+            onChange={(e) => setView(e.target.value)}
+            label="Period"
+          >
+            <MenuItem value="daily">Daily</MenuItem>
+            <MenuItem value="weekly">Weekly</MenuItem>
+            <MenuItem value="monthly">Monthly</MenuItem>
+            <MenuItem value="yearly">Yearly</MenuItem>
+          </Select>
+        </FormControl>
+
+        <LocalizationProvider dateAdapter={AdapterDayjs}>
+          {(view === "daily" || view === "weekly" || view === "monthly") && (
+            <>
+              <DatePicker
+                label="Start Date"
+                value={startDate}
+                onChange={(newVal) => setStartDate(newVal)}
               />
-
-              {/* ✅ Forecasted Income */}
-              <Line
-                type="monotone"
-                dataKey="expectedIncome"
-                stroke="#22c55e"
-                strokeWidth={3}
-                strokeDasharray="5 5"
-                dot={{ r: 3 }}
-                name="Forecasted Income"
+              <DatePicker
+                label="End Date"
+                value={endDate}
+                onChange={(newVal) => setEndDate(newVal)}
               />
+            </>
+          )}
+        </LocalizationProvider>
 
-              {/* ✅ Actual Expenses + Salaries */}
-              <Line
-                type="monotone"
-                dataKey="actualExpense"
-                stroke="#dc2626"
-                strokeWidth={3}
-                dot={{ r: 4 }}
-                activeDot={{ r: 6 }}
-                name="Actual Expenses + Salaries"
-              />
+        <Button variant="contained" onClick={fetchData}>
+          Apply
+        </Button>
 
-              {/* ✅ Forecasted Expenses + Salaries */}
-              <Line
-                type="monotone"
-                dataKey="expectedExpense"
-                stroke="#f87171"
-                strokeWidth={3}
-                strokeDasharray="5 5"
-                dot={{ r: 3 }}
-                name="Forecasted Expenses + Salaries"
-              />
+        <FormControl sx={{ minWidth: 150 }}>
+          <InputLabel>Chart Type</InputLabel>
+          <Select
+            value={chartType}
+            onChange={(e) => setChartType(e.target.value)}
+            label="Chart Type"
+          >
+            <MenuItem value="line">Line Chart</MenuItem>
+            <MenuItem value="bar">Bar Chart</MenuItem>
+          </Select>
+        </FormControl>
+      </Stack>
 
-              {/* 💰 Net Cash Flow */}
-              <Line
-                type="monotone"
-                dataKey="netCashFlow"
-                stroke="#8b5cf6"
-                strokeWidth={3}
-                dot={{ r: 3 }}
-                strokeDasharray="4 4"
-                name="Net Cash Flow"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-    </div>
+      {/* Chart Section */}
+      <Card>
+        <CardContent>{renderChart()}</CardContent>
+      </Card>
+    </Box>
   );
-}
+};
 
-export default ForcastingDashboard;
+export default ForecastingDashboard;

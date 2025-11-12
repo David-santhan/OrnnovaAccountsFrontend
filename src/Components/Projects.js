@@ -54,10 +54,38 @@ const [projectToDelete, setProjectToDelete] = useState(null);
 
  
 
-  const handleEditChange = (field, value) => {
-  setFormValues({ ...formValues, [field]: value });
-  setIsDirty(true); // enable Save button when something changes
+const handleEditChange = (field, value) => {
+  let updatedForm = { ...formValues, [field]: value };
+
+  // Parse values safely
+  const billRate = parseFloat(updatedForm.billRate) || 0;
+  const hoursOrDays = parseFloat(updatedForm.hoursOrDays) || 0;
+
+  // 🧮 Recalculate Monthly Billing when relevant fields change
+  if (["billingType", "billRate", "hoursOrDays"].includes(field)) {
+    let monthlyBilling = 0;
+
+    switch (updatedForm.billingType) {
+      case "Hour":
+        monthlyBilling = billRate * (hoursOrDays || 0);
+        break;
+      case "Day":
+        monthlyBilling = billRate * (hoursOrDays || 0);
+        break;
+      case "Month":
+        monthlyBilling = billRate;
+        break;
+      default:
+        monthlyBilling = 0;
+    }
+
+    updatedForm.monthlyBilling = monthlyBilling;
+  }
+
+  setFormValues(updatedForm);
+  setIsDirty(true); // ✅ enable Save button when something changes
 };
+
 const handleDeleteClick = (project) => {
   setProjectToDelete(project);
   setOpenDeleteDialog(true);
@@ -130,6 +158,7 @@ const handleSave = async () => {
     monthlyBilling: "",
     employeeID: [],
     employeeName: [],
+    hoursOrDays:0,
     poNumber: "NA",
     purchaseOrder: null,
     purchaseOrderValue: "NA",
@@ -201,36 +230,44 @@ const handleSave = async () => {
   };
 
   // Handle input changes
-  const handleChange = (e) => {
+const handleChange = (e) => {
   const { name, value, files } = e.target;
   let updatedProject = { ...newProject };
 
+  // Handle file upload separately
   if (name === "purchaseOrder") {
     updatedProject[name] = files[0];
   } else {
     updatedProject[name] = value;
   }
 
-  // Recalculate monthlyBilling when billingType or billRate changes
-  if (name === "billingType" || name === "billRate") {
-    const billRate = parseFloat(
-      name === "billRate" ? value : updatedProject.billRate
-    ) || 0;
+  // Get values safely
+  const billRate = parseFloat(updatedProject.billRate) || 0;
+  const hoursOrDays = parseFloat(updatedProject.hoursOrDays) || 0;
 
+  // 🔄 Recalculate monthlyBilling whenever any related field changes
+  if (
+    ["billingType", "billRate", "hoursOrDays"].includes(name)
+  ) {
     let monthlyBilling = 0;
+
     switch (updatedProject.billingType) {
       case "Hour":
-        monthlyBilling = 240 * billRate;
+        // Multiply bill rate × total hours (default 240 if empty)
+        monthlyBilling = billRate * (hoursOrDays || 240);
         break;
       case "Day":
-        monthlyBilling = 30 * billRate;
+        // Multiply bill rate × total days (default 30 if empty)
+        monthlyBilling = billRate * (hoursOrDays || 30);
         break;
       case "Month":
-        monthlyBilling = 1 * billRate;
+        // Monthly billing equals bill rate directly
+        monthlyBilling = billRate;
         break;
       default:
         monthlyBilling = 0;
     }
+
     updatedProject.monthlyBilling = monthlyBilling;
   }
 
@@ -238,7 +275,35 @@ const handleSave = async () => {
 };
 
 
-  
+
+  // Handle form submit
+// const handleSubmit = async () => {
+//     try {
+//       const formData = new FormData();
+//       Object.keys(newProject).forEach((key) => {
+//         formData.append(key, newProject[key]);
+//       });
+
+//       const response = await fetch("http://localhost:7760/addproject", {
+//         method: "POST",
+//         body: formData,
+//       });
+
+//       if (!response.ok) throw new Error("Failed to add project");
+
+//       const saved = await response.json();
+//       setProjects([...projects, saved]);
+//       setOpen(false);
+//       setSuccessMessage("✅ Project added successfully!");
+
+//       // Auto-hide success message after 3 seconds
+//       setTimeout(() => setSuccessMessage(""), 3000);
+//     } catch (error) {
+//       console.error("Error adding project:", error);
+//       setSuccessMessage("❌ Failed to add project");
+//     }
+//   };
+
 const handleSubmit = async () => {
   try {
     const formData = new FormData();
@@ -495,40 +560,37 @@ const handleSubmit = async () => {
       <DialogContent dividers>
   {formValues && (
     <>
-      {/* Row 1 */}
+      {/* Row 1 — Client & Project */}
       <div style={{ display: "flex", gap: "1rem" }}>
         {/* Client (Non-editable) */}
-<TextField
-  select
-  label="Client"
-  name="clientID"
-  value={formValues.clientID || ""}
-  fullWidth
-  margin="normal"
-  InputProps={{ readOnly: true }} // makes it read-only
->
-  {clients.map((c) => (
-    <MenuItem key={c.id} value={c.id}>
-      {c.clientName} - {c.id}
-    </MenuItem>
-  ))}
-</TextField>
+        <TextField
+          select
+          label="Client"
+          name="clientID"
+          value={formValues.clientID || ""}
+          fullWidth
+          margin="normal"
+          InputProps={{ readOnly: true }}
+        >
+          {clients.map((c) => (
+            <MenuItem key={c.id} value={c.id}>
+              {c.clientName} - {c.id}
+            </MenuItem>
+          ))}
+        </TextField>
 
-{/* Project Name (Non-editable) */}
-<TextField
-  label="Project Name"
-  name="projectName"
-  value={formValues.projectName || ""}
-  fullWidth
-  margin="normal"
-  InputProps={{ readOnly: true }} // makes it read-only
-/>
-
+        {/* Project Name (Non-editable) */}
+        <TextField
+          label="Project Name"
+          name="projectName"
+          value={formValues.projectName || ""}
+          fullWidth
+          margin="normal"
+          InputProps={{ readOnly: true }}
+        />
       </div>
 
-    
-
-      {/* Row 3 */}
+      {/* Row 3 — Skill & Location */}
       <div style={{ display: "flex", gap: "1rem" }}>
         <TextField
           label="Skill"
@@ -548,7 +610,7 @@ const handleSubmit = async () => {
         />
       </div>
 
-      {/* Row 4 */}
+      {/* Row 4 — Dates */}
       <div style={{ display: "flex", gap: "1rem" }}>
         <TextField
           label="Start Date"
@@ -571,18 +633,48 @@ const handleSubmit = async () => {
           margin="normal"
         />
       </div>
-  {/* Row 2 */}
+
+      {/* Row 2 — Description */}
       <TextField
         label="Project Description"
         name="projectDescription"
         multiline
         rows={2}
         value={formValues.projectDescription || ""}
-        onChange={(e) => handleEditChange("projectDescription", e.target.value)}
+        onChange={(e) =>
+          handleEditChange("projectDescription", e.target.value)
+        }
         fullWidth
         margin="normal"
       />
-      {/* Row 5 */}
+
+  <Divider textAlign="center"
+      sx={{
+        marginY: 2,
+        "&::before, &::after": {
+          borderColor: "#50a7ffff",
+          borderWidth: "2px",
+          color: "darkblue",
+          fontSize:"20px",
+          fontWeight:"bold"
+          
+        },
+      }}> <Box
+              sx={{
+                backgroundColor: "#1976d2",
+                color: "white",
+                px: 3,
+                py: 0.5,
+                borderRadius: "6px",
+                display: "inline-block",
+                fontWeight: "bold",
+                letterSpacing: "0.5px",
+                boxShadow: "0 2px 6px rgba(25, 118, 210, 0.3)",
+              }}
+            >
+            Contact Details
+            </Box></Divider>
+      {/* Row 5 — SPOC, Mail, Mobile */}
       <div style={{ display: "flex", gap: "1rem" }}>
         <TextField
           label="SPOC"
@@ -611,16 +703,61 @@ const handleSubmit = async () => {
           margin="normal"
         />
       </div>
+        <Divider textAlign="center"
+      sx={{
+        marginY: 2,
+        "&::before, &::after": {
+          borderColor: "#50a7ffff",
+          borderWidth: "2px",
+          color: "darkblue",
+          fontSize:"20px",
+          fontWeight:"bold"
+          
+        },
+      }}> <Box
+              sx={{
+                backgroundColor: "#1976d2",
+                color: "white",
+                px: 3,
+                py: 0.5,
+                borderRadius: "6px",
+                display: "inline-block",
+                fontWeight: "bold",
+                letterSpacing: "0.5px",
+                boxShadow: "0 2px 6px rgba(25, 118, 210, 0.3)",
+              }}
+            >
+            Billing Details
+            </Box></Divider>
 
-      {/* Row 6 */}
-      <div style={{ display: "flex", gap: "1rem" }}>
+      {/* Row 6 — Billing Info */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "1rem",
+          flexWrap: "nowrap",
+          width: "100%",
+          overflowX: "auto",
+          borderBottom: "1px solid #ddd",
+          paddingBottom: "10px",
+        }}
+      >
+        <Typography
+          variant="subtitle2"
+          sx={{ minWidth: 120, fontWeight: 600, color: "#1976d2" }}
+        >
+          Billing Info:
+        </Typography>
+
+        {/* Billing Type */}
         <TextField
           select
           label="Billing Type"
           name="billingType"
           value={formValues.billingType || ""}
           onChange={(e) => handleEditChange("billingType", e.target.value)}
-          fullWidth
+          sx={{ minWidth: 160 }}
           margin="normal"
         >
           <MenuItem value="Hour">Hour</MenuItem>
@@ -628,42 +765,201 @@ const handleSubmit = async () => {
           <MenuItem value="Month">Month</MenuItem>
         </TextField>
 
+        {/* Bill Rate */}
         <TextField
           label="Bill Rate"
           name="billRate"
-          type="text"
+          type="number"
           value={formValues.billRate || ""}
           onChange={(e) => handleEditChange("billRate", e.target.value)}
-          fullWidth
+          sx={{ minWidth: 160 }}
           margin="normal"
         />
 
+        {/* Monthly Billing */}
         <TextField
           label="Monthly Billing"
           name="monthlyBilling"
           type="number"
           value={formValues.monthlyBilling || ""}
-          onChange={(e) => handleEditChange("monthlyBilling", e.target.value)}
-          fullWidth
+          InputProps={{ readOnly: true }}
+          sx={{ minWidth: 160 }}
           margin="normal"
-          // InputProps={{ readOnly: true }}
         />
-        <TextField
-  select
-  label="Invoice Cycle"
-  name="invoiceCycle"
-  value={formValues.invoiceCycle || ""}
-  onChange={(e) => handleEditChange("invoiceCycle", e.target.value)}
-  fullWidth
-  margin="normal"
->
-  <MenuItem value="Monthly">Monthly</MenuItem>
-  <MenuItem value="Quarterly">Quarterly</MenuItem>
-</TextField>
 
+        {/* Invoice Cycle */}
+        <TextField
+          select
+          label="Invoice Cycle"
+          name="invoiceCycle"
+          value={formValues.invoiceCycle || ""}
+          onChange={(e) => handleEditChange("invoiceCycle", e.target.value)}
+          sx={{ minWidth: 160 }}
+          margin="normal"
+        >
+          <MenuItem value="Monthly">Monthly</MenuItem>
+          <MenuItem value="Quarterly">Quarterly</MenuItem>
+        </TextField>
       </div>
 
-      {/* Row 7 */}
+      {/* Row 7 — Hours/Days, GST, TDS */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "1rem",
+          flexWrap: "wrap",
+          width: "100%",
+          overflowX: "auto",
+          marginTop: "1rem",
+        }}
+      >
+        <Typography
+          variant="subtitle2"
+          sx={{ minWidth: 120, fontWeight: 600, color: "#1976d2" }}
+        >
+          Tax & Time Info:
+        </Typography>
+
+        {/* Hours/Days */}
+        {(formValues.billingType === "Hour" ||
+          formValues.billingType === "Day") && (
+          <TextField
+            label={
+              formValues.billingType === "Hour"
+                ? "Total Hours"
+                : "Total Days"
+            }
+            name="hoursOrDays"
+            type="number"
+            value={formValues.hoursOrDays || ""}
+            onChange={(e) =>
+              handleEditChange("hoursOrDays", e.target.value)
+            }
+            sx={{ width: 100 }}
+            margin="normal"
+          />
+        )}
+
+        {/* GST (%) */}
+        {(formValues.monthlyBilling > 0) && (
+          <TextField
+            label="GST (%)"
+            name="gst"
+            type="number"
+            value={formValues.gst || ""}
+            onChange={(e) => {
+              const gst = parseFloat(e.target.value) || 0;
+              const gstAmount =
+                (formValues.monthlyBilling * gst) / 100;
+              const tdsAmount =
+                (formValues.monthlyBilling *
+                  (formValues.tds || 0)) /
+                100;
+
+              setFormValues({
+                ...formValues,
+                gst,
+                gstAmount,
+                netPayable:
+                  formValues.monthlyBilling +
+                  gstAmount -
+                  tdsAmount,
+              });
+              setIsDirty(true);
+            }}
+            sx={{ width: 130 }}
+            margin="normal"
+            disabled={
+              (formValues.billingType === "Hour" &&
+                !formValues.hoursOrDays) ||
+              (formValues.billingType === "Day" &&
+                !formValues.hoursOrDays)
+            }
+          />
+        )}
+
+        {/* TDS (%) */}
+        {(formValues.monthlyBilling > 0) && (
+          <TextField
+            label="TDS (%)"
+            name="tds"
+            type="number"
+            value={formValues.tds || ""}
+            onChange={(e) => {
+              const tds = parseFloat(e.target.value) || 0;
+              const gstAmount =
+                (formValues.monthlyBilling *
+                  (formValues.gst || 0)) /
+                100;
+              const tdsAmount =
+                (formValues.monthlyBilling * tds) / 100;
+
+              setFormValues({
+                ...formValues,
+                tds,
+                tdsAmount,
+                netPayable:
+                  formValues.monthlyBilling +
+                  gstAmount -
+                  tdsAmount,
+              });
+              setIsDirty(true);
+            }}
+            sx={{ width: 130 }}
+            margin="normal"
+            disabled={
+              (formValues.billingType === "Hour" &&
+                !formValues.hoursOrDays) ||
+              (formValues.billingType === "Day" &&
+                !formValues.hoursOrDays)
+            }
+          />
+        )}
+
+        {/* Net Payable */}
+        {(formValues.gst || formValues.tds) && (
+          <TextField
+            label="Net Payable"
+            name="netPayable"
+            type="number"
+            value={formValues.netPayable || ""}
+            InputProps={{ readOnly: true }}
+            sx={{
+              minWidth: 200,
+              backgroundColor: "#f1f8e9",
+              fontWeight: "bold",
+            }}
+            margin="normal"
+          />
+        )}
+      </div>
+  <Divider textAlign="center"
+      sx={{
+        marginY: 2,
+        "&::before, &::after": {
+          borderColor: "#50a7ffff",
+          borderWidth: "2px",
+          color: "darkblue",
+          fontSize:"20px",
+          fontWeight:"bold"
+          
+        },
+      }}> <Box
+              sx={{
+                backgroundColor: "#1976d2",
+                color: "white",
+                px: 3,
+                py: 0.5,
+                borderRadius: "6px",
+                display: "inline-block",
+                fontWeight: "bold",
+                letterSpacing: "0.5px",
+                boxShadow: "0 2px 6px rgba(25, 118, 210, 0.3)",
+              }}
+            >
+            Employee & PO Details
+            </Box></Divider>
       <div style={{ display: "flex", gap: "1rem" }}>
     <FormControl fullWidth margin="normal">
   <InputLabel>Employees</InputLabel>
@@ -854,6 +1150,7 @@ const handleSubmit = async () => {
 </DialogContent>
 
 
+
      <DialogActions>
   {isDirty ? (
     <>
@@ -1002,6 +1299,32 @@ const handleSubmit = async () => {
      
      
     </div>
+    <Divider textAlign="center"
+      sx={{
+        marginY: 2,
+        "&::before, &::after": {
+          borderColor: "#50a7ffff",
+          borderWidth: "2px",
+          color: "darkblue",
+          fontSize:"20px",
+          fontWeight:"bold"
+          
+        },
+      }}> <Box
+              sx={{
+                backgroundColor: "#1976d2",
+                color: "white",
+                px: 3,
+                py: 0.5,
+                borderRadius: "6px",
+                display: "inline-block",
+                fontWeight: "bold",
+                letterSpacing: "0.5px",
+                boxShadow: "0 2px 6px rgba(25, 118, 210, 0.3)",
+              }}
+            >
+            Contact Details
+            </Box></Divider>
 
     {/* Row 5 */}
     <div style={{ display: "flex", gap: "1rem" }}>
@@ -1033,47 +1356,85 @@ const handleSubmit = async () => {
       />
     </div>
 
-    {/* Row 6 */}
-    <div style={{ display: "flex", gap: "1rem" }}>
-     
-     <TextField
-  select
-  label="Billing Type"
-  name="billingType"
-  value={newProject.billingType}
-  onChange={handleChange}
-  fullWidth
-  margin="normal"
+ <Divider textAlign="center"
+      sx={{
+        marginY: 2,
+        "&::before, &::after": {
+          borderColor: "#50a7ffff",
+          borderWidth: "2px",
+          color: "darkblue",
+          fontSize:"20px",
+          fontWeight:"bold"
+          
+        },
+      }}> <Box
+              sx={{
+                backgroundColor: "#1976d2",
+                color: "white",
+                px: 3,
+                py: 0.5,
+                borderRadius: "6px",
+                display: "inline-block",
+                fontWeight: "bold",
+                letterSpacing: "0.5px",
+                boxShadow: "0 2px 6px rgba(25, 118, 210, 0.3)",
+              }}
+            >
+            Billing Details
+            </Box></Divider>
+{/* 💼 Row 6 — Billing Details */}
+<Box
+  sx={{
+    display: "flex",
+    flexWrap: "nowrap",
+    alignItems: "center",
+    gap: 2,
+    mt: 2,
+    pb: 1,
+    borderBottom: "1px solid #ddd",
+  }}
 >
-  <MenuItem value="Hour">Hour</MenuItem>
-  <MenuItem value="Day">Day</MenuItem>
-  <MenuItem value="Month">Month</MenuItem>
-</TextField>
+  <Typography
+    variant="subtitle2"
+    sx={{ minWidth: 120, fontWeight: 600, color: "#1976d2" }}
+  >
+    Billing Details:
+  </Typography>
 
-<TextField
-  label="Bill Rate"
-  name="billRate"
-  type="text"
-  value={newProject.billRate}
-  onChange={handleChange}
-  fullWidth
-  margin="normal"
-/>
+  <TextField
+    select
+    label="Billing Type"
+    name="billingType"
+    value={newProject.billingType}
+    onChange={handleChange}
+    sx={{ minWidth: 180 }}
+    margin="normal"
+  >
+    <MenuItem value="Hour">Hourly</MenuItem>
+    <MenuItem value="Day">Day</MenuItem>
+    <MenuItem value="Month">Monthly</MenuItem>
+  </TextField>
 
-<TextField
-  label="Monthly Billing"
-  name="monthlyBilling"
-  type="text"
-  value={newProject.monthlyBilling}
-  onChange={(e) =>
-    setNewProject({
-      ...newProject,
-      monthlyBilling: e.target.value,
-    })
-  }
-  fullWidth
-  margin="normal"
-/>
+  <TextField
+    label="Bill Rate"
+    name="billRate"
+    type="number"
+    value={newProject.billRate}
+    onChange={handleChange}
+    sx={{ minWidth: 120 }}
+    margin="normal"
+  />
+
+  <TextField
+    label="Monthly Billing"
+    name="monthlyBilling"
+    type="number"
+    value={newProject.monthlyBilling || ""}
+    // InputProps={{ readOnly: true }}
+    onChange={handleChange}
+    sx={{ minWidth: 180 }}
+    margin="normal"
+  />
 
   <TextField
     select
@@ -1083,16 +1444,152 @@ const handleSubmit = async () => {
     onChange={(e) =>
       setNewProject({ ...newProject, invoiceCycle: e.target.value })
     }
-    fullWidth
+    sx={{ minWidth: 180 }}
     margin="normal"
   >
     <MenuItem value="Monthly">Monthly</MenuItem>
     <MenuItem value="Quarterly">Quarterly</MenuItem>
   </TextField>
+</Box>
 
-    </div>
+{/* 🧾 Row 7 — Hours/Days + GST + TDS + Net Payable */}
+<Box
+  sx={{
+    display: "flex",
+    alignItems: "center",
+    gap: 2,
+    mt: 2,
+    flexWrap: "wrap",
+  }}
+>
+  <Typography
+    variant="subtitle2"
+    sx={{ minWidth: 120, fontWeight: 600, color: "#1976d2" }}
+  >
+    Tax & Time Info:
+  </Typography>
 
-    {/* Row 7 */}
+  {/* Hours/Days */}
+  {(newProject.billingType === "Hour" || newProject.billingType === "Day") && (
+    <TextField
+      label={
+        newProject.billingType === "Hour" ? "Total Hours" : "Total Days"
+      }
+      name="hoursOrDays"
+      type="number"
+      value={newProject.hoursOrDays || ""}
+      onChange={handleChange}
+      sx={{ width: 130 }}
+      margin="normal"
+    />
+  )}
+
+  {/* GST (%) */}
+  {(newProject.monthlyBilling > 0) && (
+    <TextField
+      label="GST (%)"
+      name="gst"
+      type="number"
+      value={newProject.gst || ""}
+      onChange={(e) => {
+        const gst = parseFloat(e.target.value) || 0;
+        const gstAmount = (newProject.monthlyBilling * gst) / 100;
+        const tdsAmount =
+          (newProject.monthlyBilling * (newProject.tds || 0)) / 100;
+
+        setNewProject({
+          ...newProject,
+          gst,
+          gstAmount,
+          netPayable: newProject.monthlyBilling + gstAmount - tdsAmount,
+        });
+      }}
+      sx={{ width: 130 }}
+      margin="normal"
+      disabled={
+        (newProject.billingType === "Hour" && !newProject.hoursOrDays) ||
+        (newProject.billingType === "Day" && !newProject.hoursOrDays)
+      } // ✅ disable if total hours/days not entered
+    />
+  )}
+
+  {/* TDS (%) */}
+  {(newProject.monthlyBilling > 0) && (
+    <TextField
+      label="TDS (%)"
+      name="tds"
+      type="number"
+      value={newProject.tds || ""}
+      onChange={(e) => {
+        const tds = parseFloat(e.target.value) || 0;
+        const gstAmount =
+          (newProject.monthlyBilling * (newProject.gst || 0)) / 100;
+        const tdsAmount = (newProject.monthlyBilling * tds) / 100;
+
+        setNewProject({
+          ...newProject,
+          tds,
+          tdsAmount,
+          netPayable: newProject.monthlyBilling + gstAmount - tdsAmount,
+        });
+      }}
+      sx={{ width: 130 }}
+      margin="normal"
+      disabled={
+        (newProject.billingType === "Hour" && !newProject.hoursOrDays) ||
+        (newProject.billingType === "Day" && !newProject.hoursOrDays)
+      } // ✅ disable if total hours/days not entered
+    />
+  )}
+
+  {/* Net Payable */}
+  {(newProject.gst || newProject.tds) && (
+    <TextField
+      label="Net Payable"
+      name="netPayable"
+      type="number"
+      value={newProject.netPayable || ""}
+      InputProps={{ readOnly: true }}
+      sx={{
+        minWidth: 200,
+        backgroundColor: "#f1f8e9",
+        fontWeight: "bold",
+      }}
+      margin="normal"
+    />
+  )}
+</Box>
+
+
+
+
+ <Divider textAlign="center"
+      sx={{
+        marginY: 2,
+        "&::before, &::after": {
+          borderColor: "#50a7ffff",
+          borderWidth: "2px",
+          color: "darkblue",
+          fontSize:"20px",
+          fontWeight:"bold"
+          
+        },
+      }}> <Box
+              sx={{
+                backgroundColor: "#1976d2",
+                color: "white",
+                px: 3,
+                py: 0.5,
+                borderRadius: "6px",
+                display: "inline-block",
+                fontWeight: "bold",
+                letterSpacing: "0.5px",
+                boxShadow: "0 2px 6px rgba(25, 118, 210, 0.3)",
+              }}
+            >
+            Employee & PO Details
+            </Box></Divider>
+    {/* Row 8 */}
     <div style={{ display: "flex", gap: "1rem" }}>
     <FormControl fullWidth margin="normal">
   <InputLabel>Employees</InputLabel>
@@ -1240,8 +1737,8 @@ const handleSubmit = async () => {
   </DialogContent>
 
   <DialogActions>
-    <Button onClick={() => setOpen(false)}>Cancel</Button>
-    <Button onClick={handleSubmit} variant="contained" color="primary">
+    <Button color="warning" onClick={() => setOpen(false)}>Cancel</Button>
+    <Button onClick={handleSubmit} variant="contained" color="success">
       Save
     </Button>
   </DialogActions>
