@@ -66,7 +66,7 @@ const [monthYear,setMonthYear]=useState("");
     "GST", "Office Stationary", "Reimbursements", "Incentives", "Mobile", "Expense"
   ];
 const [filterStatus, setFilterStatus] = useState("all");
-
+const [open, setOpen] = useState(false);
 
   // Fetch expenses from backend on component mount
   useEffect(() => {
