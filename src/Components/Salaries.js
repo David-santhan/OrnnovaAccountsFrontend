@@ -3,7 +3,8 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, Fab, Dialog, DialogTitle, DialogContent, DialogActions, MenuItem,
   TextField, Button, Autocomplete,
-  Divider, Box,Select,Typography
+  Divider, Box,Select,Typography,
+  Link
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -68,6 +69,14 @@ const [pendingSummary, setPendingSummary] = useState([]);
   actualToPay: 0,       // read-only, NET TAKEHOME
 });
 const currentMonth = dayjs().format("YYYY-MM");
+const [openUpdateModal, setOpenUpdateModal] = useState(false);
+const [selectedEmployee, setSelectedEmployee] = useState(null);
+const [updateForm, setUpdateForm] = useState({
+  month: "",
+  actual_to_pay: "",
+  due_date: "",
+});
+
 
 // get monthly Salaries by Month
 const fetchAllMonthlySalaries = async () => {
@@ -93,19 +102,29 @@ useEffect(() => {
 
 
   // Open dialog
-  const monthlySalaryOpenDialog = (salary) => {
-  setMonthlySalarySelected(salary);  // store selected row
+const monthlySalaryOpenDialog = (emp) => {
+  const currentMonth = dayjs(month).format("YYYY-MM");
+
+  // Find pending record for this employee & month
+  const pending = pendingSummary.find(
+    (p) =>
+      p.employee_id === emp.employee_id &&
+      p.pending_months === currentMonth
+  );
+
   setMonthlySalaryFormData({
-    empId: salary.employee_id,
-    empName: salary.employee_name,
-    paid: "No",  // default to No
-    month: dayjs().format("YYYY-MM"),
+    empId: emp.employee_id,
+    empName: emp.employee_name,
+    month: currentMonth,
+    actual_to_pay: pending?.actual_to_pay || emp.net_takehome || 0,
+    paid: "Yes",
     lop: 0,
-    paidAmount: salary.net_takehome,
-    actualToPay: salary.net_takehome, // pre-fill from salary data
+    paidAmount: pending?.actual_to_pay || emp.net_takehome || 0,
   });
-  setMonthlySalaryDialogOpen(true);  // open dialog
+
+  setMonthlySalaryDialogOpen(true);
 };
+
 
 
 
@@ -120,58 +139,73 @@ const monthlySalaryHandleChange = (e) => {
   const { name, value } = e.target;
 
   setMonthlySalaryFormData((prev) => {
-    let updated = { ...prev, [name]: value };
+    let updated = { ...prev };
 
-    // Recalculate Paid Amount only if LOP changes and > 0
     if (name === "lop") {
       const lopDays = parseFloat(value) || 0;
-      const actualPay = parseFloat(prev.actualToPay) || 0;
+      const actualPay = parseFloat(prev.actual_to_pay) || 0;
 
+      updated.lop = value;
+
+      // Correct month parsing
+      const [year, monthStr] = prev.month.split("-");
+      const month = parseInt(monthStr);
+      const daysInMonth = new Date(year, month, 0).getDate();
+
+      const perDayRate = actualPay / daysInMonth;
+
+      // Recalculate paidAmount ONLY when LOP changes
       if (lopDays > 0) {
-        // Get days in the selected month
-        const [year, month] = updated.month.split("-");
-        const daysInMonth = new Date(year, month, 0).getDate();
-
-        const perDayRate = actualPay / daysInMonth;
-
-        updated.paidAmount = (actualPay - lopDays * perDayRate).toFixed(2);
+        updated.paidAmount = Math.max(actualPay - lopDays * perDayRate, 0);
       } else {
-        // If LOP is 0, keep full actual pay
-        updated.paidAmount = actualPay.toFixed(2);
+        updated.paidAmount = actualPay; // full amount
       }
+    } 
+    else if (name === "paidAmount") {
+      // Allow manual override
+      const numericValue = Number(value.replace(/[^0-9.]/g, "")) || 0;
+      updated.paidAmount = numericValue;
+    } 
+    else {
+      updated[name] = value;
     }
 
     return updated;
   });
 };
+
+
  
 
 
   // Submit form
 const monthlySalaryHandleSubmit = async () => {
   try {
-    const response = await axios.post("http://localhost:7760/monthlySalary/save", {
-      empId: monthlySalaryFormData.empId,
-      empName: monthlySalaryFormData.empName,
+    const payload = {
       paid: monthlySalaryFormData.paid,
-      month: monthlySalaryFormData.month,
       lop: parseFloat(monthlySalaryFormData.lop) || 0,
       paidAmount: parseFloat(monthlySalaryFormData.paidAmount) || 0,
       actualToPay: parseFloat(monthlySalaryFormData.actualToPay) || 0,
-    });
+    };
+
+    const response = await axios.put(
+      `http://localhost:7760/monthlySalary/update/${monthlySalaryFormData.empId}/${monthlySalaryFormData.month}`,
+      payload
+    );
 
     if (response.data.success) {
-      alert("Salary saved successfully!");
-      monthlySalaryCloseDialog(); // close dialog
+      alert("Salary updated successfully!");
+      monthlySalaryCloseDialog();
       fetchAllMonthlySalaries();
     } else {
-      alert("Failed to save salary");
+      alert(response.data.message || "Failed to update salary");
     }
   } catch (error) {
-    console.error(error);
-    alert("Error saving salary");
+    console.error("❌ Error updating salary:", error);
+    alert("Server error while updating salary");
   }
 };
+
 
 
  const getMonthYearLabel = (value) => {
@@ -457,6 +491,35 @@ const getPaidStatus = (empId) => {
   return record ? record.paid : "No"; // Default No if not found
 };
 
+const handleSalaryUpdate = async () => {
+  if (!updateForm.due_date) {
+    alert("Please select a due date before saving.");
+    return;
+  }
+
+  try {
+    const res = await fetch(`http://localhost:7760/update-salary/${selectedEmployee.employee_id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updateForm),
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      alert("Salary updated successfully!");
+      setOpenUpdateModal(false);
+      // optionally refetch salary data
+      // fetchMonthlySalaryData();
+    } else {
+      alert(data.error || "Failed to update salary");
+    }
+  } catch (err) {
+    console.error("❌ Error updating salary:", err);
+    alert("Server error while updating salary");
+  }
+};
+
+
   return (
     <div style={{ padding: "20px" }}>
      <div style={{ paddingTop: "120px" }}>
@@ -651,6 +714,7 @@ const getPaidStatus = (empId) => {
           <TableCell style={{ fontWeight: "bold" }}>Emp Name</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>CTC</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>Take Home</TableCell>
+          <TableCell style={{ fontWeight: "bold" }}>Actual to Pay</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>Paid</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>Action</TableCell>
         </TableRow>
@@ -658,7 +722,7 @@ const getPaidStatus = (empId) => {
 <TableBody>
   {[...new Map(filteredSalaries.map((e) => [e.employee_id, e])).values()].map(
     (emp) => {
-      // ✅ Find salary record for this employee & selected month/year
+      // ✅ Find salary record for this employee & month
       const salaryRecord = monthlySalaryData.find(
         (m) =>
           m.employee_id === emp.employee_id &&
@@ -667,6 +731,9 @@ const getPaidStatus = (empId) => {
       );
 
       const paidStatus = salaryRecord ? salaryRecord.paid : "No";
+      const hasRecord = !!salaryRecord;
+      const isUnpaidRecord = hasRecord && paidStatus === "No";
+      const canPay = isUnpaidRecord && salaryRecord.actual_to_pay > 0;
 
       return (
         <TableRow
@@ -684,58 +751,129 @@ const getPaidStatus = (empId) => {
           <TableCell>{formatCurrency(emp.ctc)}</TableCell>
           <TableCell>{formatCurrency(emp.net_takehome)}</TableCell>
 
-          {/* ✅ Paid / Not Paid indicator */}
-         <TableCell style={{ textAlign: "start", fontWeight: "bold" }}>
-  <span
-    style={{
-      color: paidStatus === "Yes" ? "green" : "red",
-      display: "inline-block",
-      animation: paidStatus === "Yes" ? "heartbeat 1s infinite" : "none",
-      textShadow:
-        paidStatus === "Yes"
-          ? "0 0 5px green, 0 0 10px green"
-          : "0 0 5px red, 0 0 10px red",
-    }}
-  >
-    {paidStatus}
-  </span>
-  <style>
-    {`
-      @keyframes heartbeat {
-        0%, 100% { transform: scale(1); }
-        25%, 75% { transform: scale(1.2); }
-        50% { transform: scale(1); }
-      }
-    `}
-  </style>
+          {/* ✅ Actual To Pay / Update Column */}
+          <TableCell>
+  {hasRecord ? (
+    paidStatus === "No" ? (
+      // 🔴 Case 1: Record exists but NOT paid
+      <>
+        <Typography
+          variant="body1"
+          sx={{ fontWeight: "bold", color: "#374151" }}
+        >
+          {formatCurrency(salaryRecord.actual_to_pay || 0)}
+        </Typography>
+
+        <Typography
+          variant="caption"
+          color={
+            salaryRecord.due_date &&
+            dayjs(salaryRecord.due_date).isBefore(dayjs())
+              ? "error"
+              : "textSecondary"
+          }
+          sx={{ display: "block", mt: 0.5 }}
+        >
+          Due:{" "}
+          {salaryRecord.due_date
+            ? dayjs(salaryRecord.due_date).format("DD-MMM-YYYY")
+            : "-"}
+        </Typography>
+      </>
+    ) : (
+      // 🟢 Case 2: Record exists AND already paid
+      <>
+        <Typography
+          variant="body1"
+          sx={{ fontWeight: "bold", color: "green" }}
+        >
+          Paid: {formatCurrency(salaryRecord.paid_amount || 0)}
+        </Typography>
+
+        <Typography
+          variant="caption"
+          sx={{ color: "green", display: "block", mt: 0.5 }}
+        >
+          Paid On:{" "}
+          {salaryRecord.paid_date
+            ? dayjs(salaryRecord.paid_date).format("DD-MMM-YYYY")
+            : "-"}
+        </Typography>
+      </>
+    )
+  ) : (
+    // 🔵 Case 3: No record → show Update
+    <Link
+      component="button"
+      underline="hover"
+      color="primary"
+      onClick={(e) => {
+        e.stopPropagation();
+        setSelectedEmployee(emp);
+        setUpdateForm({
+          month: dayjs(month).format("YYYY-MM"),
+          actual_to_pay: emp.net_takehome || "",
+          due_date: "",
+        });
+        setOpenUpdateModal(true);
+      }}
+    >
+      Update
+    </Link>
+  )}
 </TableCell>
 
-<TableCell>
-  <Button
-    variant="outlined"
-    color={paidStatus === "Yes" ? "primary" : "success"}
-    onClick={(e) => {
-      e.stopPropagation();
-      if (paidStatus === "Yes") {
-        // ✅ Open View Modal
-        setSelectedSalaryRecord({
-          ...emp,
-          ...(salaryRecord || {}),
-        });
-        setViewMonthlySalaryModal(true);
-      } else {
-        // ✅ Handle Pay Logic
-        monthlySalaryOpenDialog({
-          ...emp,
-          ...(salaryRecord || {}),
-        });
-      }
-    }}
-  >
-    {paidStatus === "Yes" ? "View" : "Pay"}
-  </Button>
-</TableCell>
+          {/* ✅ Paid / Not Paid Indicator */}
+          <TableCell style={{ textAlign: "start", fontWeight: "bold" }}>
+            <span
+              style={{
+                color: paidStatus === "Yes" ? "green" : "red",
+                display: "inline-block",
+                animation: paidStatus === "Yes" ? "heartbeat 1s infinite" : "none",
+                textShadow:
+                  paidStatus === "Yes"
+                    ? "0 0 5px green, 0 0 10px green"
+                    : "0 0 5px red, 0 0 10px red",
+              }}
+            >
+              {paidStatus}
+            </span>
+            <style>
+              {`
+                @keyframes heartbeat {
+                  0%, 100% { transform: scale(1); }
+                  25%, 75% { transform: scale(1.2); }
+                  50% { transform: scale(1); }
+                }
+              `}
+            </style>
+          </TableCell>
 
+          {/* ✅ Pay / View Button */}
+          <TableCell>
+            <Button
+              variant="outlined"
+              color={paidStatus === "Yes" ? "primary" : "success"}
+              disabled={!canPay && paidStatus !== "Yes"} // 🚫 Disable if unpaid and no actual_to_pay
+              onClick={(e) => {
+                e.stopPropagation();
+                if (paidStatus === "Yes") {
+                  setSelectedSalaryRecord({
+                    ...emp,
+                    ...(salaryRecord || {}),
+                  });
+                  setViewMonthlySalaryModal(true);
+                } else if (canPay) {
+                  monthlySalaryOpenDialog({
+                    ...emp,
+                    ...(salaryRecord || {}),
+                  });
+                }
+              }}
+            >
+              {paidStatus === "Yes" ? "View" : "Pay"}
+            </Button>
+          </TableCell>
         </TableRow>
       );
     }
@@ -757,9 +895,138 @@ const getPaidStatus = (empId) => {
 
 
 
+
+
     </Table>
   </TableContainer>
 )}
+
+
+{/* Months Actual to pay update Dialog */}
+<Dialog
+  open={openUpdateModal}
+  onClose={() => setOpenUpdateModal(false)}
+  maxWidth="xs"
+  fullWidth
+>
+  <DialogTitle
+    sx={{
+      fontWeight: "bold",
+      textAlign: "center",
+      backgroundColor: "#f3f4f6",
+      borderBottom: "1px solid #e5e7eb",
+    }}
+  >
+    Update Salary Payment
+  </DialogTitle>
+
+  <DialogContent sx={{ p: 3, backgroundColor: "#fafafa" }}>
+    {selectedEmployee ? (
+      <>
+        {/* Employee Info */}
+        <Typography
+          variant="subtitle1"
+          sx={{ fontWeight: "bold", mb: 1, color: "#374151",textAlign:"center" }}
+        >
+          Employee: {selectedEmployee.employee_name} ({selectedEmployee.employee_id})
+        </Typography>
+
+        <Divider sx={{ mb: 2 }} />
+
+        {/* Month */}
+        <TextField
+  fullWidth
+  label="Month"
+  value={
+    updateForm.month
+      ? dayjs(updateForm.month, "YYYY-MM").format("MMM-YYYY") // 👉 Converts "2025-11" → "Nov-2025"
+      : ""
+  }
+  InputProps={{ readOnly: true }}
+  margin="normal"
+  sx={{
+    "& .MuiOutlinedInput-root": {
+      "& fieldset": { borderColor: "black" },
+      "&:hover fieldset": { borderColor: "black" },
+      "&.Mui-focused fieldset": { borderColor: "black" },
+    },
+  }}
+/>
+
+
+        {/* Actual to Pay */}
+        <TextField
+          fullWidth
+          label="Actual To Pay (₹)"
+          type="text"
+          value={updateForm.actual_to_pay}
+          onChange={(e) =>
+            setUpdateForm((prev) => ({
+              ...prev,
+              actual_to_pay: e.target.value,
+            }))
+          }
+          margin="normal"
+          sx={{
+            "& .MuiOutlinedInput-root": {
+              "& fieldset": { borderColor: "black" },
+              "&:hover fieldset": { borderColor: "black" },
+              "&.Mui-focused fieldset": { borderColor: "black" },
+            },
+          }}
+        />
+
+        {/* Due Date */}
+        <TextField
+          fullWidth
+          type="date"
+          label="Due Date"
+          value={updateForm.due_date}
+          onChange={(e) =>
+            setUpdateForm((prev) => ({
+              ...prev,
+              due_date: e.target.value,
+            }))
+          }
+          margin="normal"
+          InputLabelProps={{ shrink: true }}
+          sx={{
+            "& .MuiOutlinedInput-root": {
+              "& fieldset": { borderColor: "black" },
+              "&:hover fieldset": { borderColor: "black" },
+              "&.Mui-focused fieldset": { borderColor: "black" },
+            },
+          }}
+        />
+      </>
+    ) : (
+      <Typography align="center" color="textSecondary">
+        No employee selected
+      </Typography>
+    )}
+  </DialogContent>
+
+  <DialogActions sx={{ justifyContent: "center", p: 2 }}>
+    <Button
+      variant="contained"
+      onClick={() => setOpenUpdateModal(false)}
+      sx={{
+        backgroundColor: "#6b7280",
+        "&:hover": { backgroundColor: "#4b5563" },
+      }}
+    >
+      Cancel
+    </Button>
+    <Button
+      variant="contained"
+      color="success"
+      onClick={() => handleSalaryUpdate()}
+    >
+      Save
+    </Button>
+  </DialogActions>
+</Dialog>
+
 
 
   {/* Dialog to View Monthly Salaries */}
@@ -855,9 +1122,9 @@ const getPaidStatus = (empId) => {
 
 
   {/* Dialog to Add Monthly Salaries */}
-     <Dialog open={monthlySalaryDialogOpen} onClose={monthlySalaryCloseDialog} fullWidth maxWidth="sm">
-  <DialogTitle style={{fontWeight:"bold"}}>Pay Salary</DialogTitle>
-  <DialogContent style={{ display: "flex", flexDirection: "column", gap: "15px", marginTop: "10px",padding:"20px",backgroundColor:"whitesmoke",borderRadius:"5px",border:"1px solid #ccc" }}>
+   <Dialog open={monthlySalaryDialogOpen} onClose={monthlySalaryCloseDialog} fullWidth maxWidth="sm">
+   <DialogTitle style={{fontWeight:"bold"}}>Pay Salary</DialogTitle>
+   <DialogContent style={{ display: "flex", flexDirection: "column", gap: "15px", marginTop: "10px",padding:"20px",backgroundColor:"whitesmoke",borderRadius:"5px",border:"1px solid #ccc" }}>
     
     {/* Top Row: Read-only fields */}
     <Box display="flex" gap={2}>
@@ -877,13 +1144,24 @@ const getPaidStatus = (empId) => {
       />
     
 
-      <TextField
-        label="Actual to Pay"
-        name="actualToPay"
-        value={formatCurrency(monthlySalaryFormData.actualToPay)}
-        InputProps={{ readOnly: true }}
-        fullWidth
-      />
+     <TextField
+  label="Actual To Pay"
+  name="actualToPay"
+  value={formatCurrency(
+    monthlySalaryFormData.actual_to_pay ??
+    monthlySalaryFormData.actualToPay ??
+    0
+  )}
+  InputProps={{ readOnly: true }}
+  fullWidth
+  sx={{
+    "& .MuiOutlinedInput-root": {
+      backgroundColor: "#f9fafb",
+      "& fieldset": { borderColor: "black" },
+    },
+  }}
+/>
+
       </Box>
     <Divider></Divider>
           
@@ -924,17 +1202,22 @@ const getPaidStatus = (empId) => {
         fullWidth
           disabled={monthlySalaryFormData.paid === "No"} // Disable if Paid is No
       />
-      <TextField
-        label="Paid Amount"
-        name="paidAmount"
-        value={formatCurrency(monthlySalaryFormData.paidAmount)}
-        onChange={monthlySalaryHandleChange}
-            InputProps={{ readOnly: true }}
-        type="text"
-        fullWidth
-          disabled={monthlySalaryFormData.paid === "No"} // Disable if Paid is No
+     <TextField
+  label="Paid Amount"
+  name="paidAmount"
+  value={formatCurrency(monthlySalaryFormData.paidAmount || 0)}
+  onChange={monthlySalaryHandleChange}
+  type="text"
+  fullWidth
+  disabled={monthlySalaryFormData.paid === "No"}
+  sx={{
+    "& .MuiOutlinedInput-root": {
+      "& fieldset": { borderColor: "black" },
+      backgroundColor: "#fdfdfd",
+    },
+  }}
+/>
 
-      />
     </Box>
   </DialogContent>
 
