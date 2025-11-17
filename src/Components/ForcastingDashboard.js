@@ -174,7 +174,7 @@ export default function ForcastingDashboard() {
             forecastIncome: Number(m.forecastIncomeTotal || 0),
             actualExpense: Number(m.actualExpenseTotal || 0),
             forecastExpense: Number(m.forecastExpenseTotal || 0),
-            netCashFlow: Number(m.netCashFlow || 0),
+            monthlyBalance: Number(m.monthlyBalance || 0),
           }))
           .sort((a, b) => (a.month > b.month ? 1 : -1));
 
@@ -203,6 +203,18 @@ export default function ForcastingDashboard() {
     if (!fullData || !selectedMonth) return null;
     return fullData.months?.find((m) => m.month === selectedMonth) || null;
   }, [fullData, selectedMonth]);
+
+  // 1️⃣ Sort months in order
+const sorted = [...filtered].sort(
+  (a, b) => new Date(a.month) - new Date(b.month)
+);
+
+// 2️⃣ Calculate cumulative net cash flow
+let cumulative = 0;
+const withNetCashFlow = sorted.map((row) => {
+  cumulative += row.monthlyBalance;
+  return { ...row, netCashFlow: cumulative };
+});
 
   return (
     <div style={{ padding: 20 }}>
@@ -268,74 +280,66 @@ export default function ForcastingDashboard() {
         }}
       >
         <Table stickyHeader size="small">
-          <TableHead>
-            <TableRow>
-              {[
-                "Month",
-                "Actual Income",
-                "Forecasted Income",
-                "Actual Expense",
-                "Forecasted Expense",
-                "Net Cash Flow",
-                "Action",
-              ].map((head, idx) => (
-                <TableCell
-                  key={idx}
-                  style={{
-                    backgroundColor: "#e2e8f0",
-                    fontWeight: 700,
-                    color: "#1e293b",
-                  }}
-                >
-                  {head}
-                </TableCell>
-              ))}
-            </TableRow>
-          </TableHead>
+         <TableHead>
+  <TableRow>
+    {[
+      "Month",
+      "Actual Income",
+      "Forecasted Income",
+      "Actual Expense",
+      "Forecasted Expense",
+      "Monthly Balance",
+      "Net Cash Flow", 
+      "Account Balance",
+      "Action",
+    ].map((head, idx) => (
+      <TableCell key={idx} style={{ backgroundColor: "#e2e8f0", fontWeight: 700, color: "#1e293b" }}>
+        {head}
+      </TableCell>
+    ))}
+  </TableRow>
+</TableHead>
 
-          <TableBody>
-            {filtered.map((row) => (
-              <TableRow key={row.month} hover>
-                <TableCell>{formatMonthLabel(row.month)}</TableCell>
-                <TableCell>{currency(row.actualIncome)}</TableCell>
-                <TableCell>{currency(row.forecastIncome)}</TableCell>
-                <TableCell>{currency(row.actualExpense)}</TableCell>
-                <TableCell>{currency(row.forecastExpense)}</TableCell>
-                <TableCell
-                  style={{
-                    fontWeight: 600,
-                    color: row.netCashFlow >= 0 ? "green" : "red",
-                  }}
-                >
-                  {currency(row.netCashFlow)}
-                </TableCell>
+<TableBody>
+  {withNetCashFlow.map((row) => (
+    <TableRow key={row.month} hover>
+      <TableCell>{formatMonthLabel(row.month)}</TableCell>
+      <TableCell>{currency(row.actualIncome)}</TableCell>
+      <TableCell>{currency(row.forecastIncome)}</TableCell>
+      <TableCell>{currency(row.actualExpense)}</TableCell>
+      <TableCell>{currency(row.forecastExpense)}</TableCell>
 
-                <TableCell>
-                  <Button
-                    size="small"
-                    variant="contained"
-                    style={{
-                      backgroundColor: "#1e40af",
-                      color: "white",
-                      borderRadius: 6,
-                      textTransform: "none",
-                    }}
-                    onClick={() => {
-                      setSelectedMonth(row.month);
-                      setDialogOpen(true);
-                    }}
-                  >
-                    View
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
+      <TableCell style={{ fontWeight: 600, color: row.monthlyBalance >= 0 ? "green" : "red" }}>
+        {currency(row.monthlyBalance)}
+      </TableCell>
+
+      {/* ⭐ NEW: Net Cash Flow */}
+      <TableCell style={{ fontWeight: 600, color: row.netCashFlow >= 0 ? "green" : "red" }}>
+        {currency(row.netCashFlow)}
+      </TableCell>
+
+      <TableCell>
+        <Button
+          size="small"
+          variant="contained"
+          style={{ backgroundColor: "#1e40af", color: "white", borderRadius: 6, textTransform: "none" }}
+          onClick={() => {
+            setSelectedMonth(row.month);
+            setDialogOpen(true);
+          }}
+        >
+          View
+        </Button>
+      </TableCell>
+    </TableRow>
+  ))}
+</TableBody>
+
         </Table>
       </Paper>
 
       {/* Dialog */}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="lg">
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="xl">
         <DialogTitle>
           <div
             style={{
@@ -447,7 +451,7 @@ export default function ForcastingDashboard() {
       border: "1px solid #e5e7eb",
     }}
   >
-    <span style={{ color: monthDetails.netCashFlow >= 0 ? "#065f46" : "#b91c1c", fontWeight: 700 }}>
+    <span style={{ color: monthDetails.monthlyBalance >= 0 ? "#065f46" : "#b91c1c", fontWeight: 700 }}>
       Net Cash Flow
     </span>
     <div
@@ -455,10 +459,10 @@ export default function ForcastingDashboard() {
         fontSize: "1.1rem",
         marginTop: 4,
         fontWeight: 700,
-        color: monthDetails.netCashFlow >= 0 ? "green" : "red",
+        color: monthDetails.monthlyBalance >= 0 ? "green" : "red",
       }}
     >
-      {currency(monthDetails.netCashFlow)}
+      {currency(monthDetails.monthlyBalance)}
     </div>
   </div>
 </div>

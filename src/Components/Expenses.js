@@ -286,9 +286,41 @@ const handleUpdateExpense = async (updatedExp) => {
   }
 };
 
-  
+function getMainCategory(type) {
+  if (!type) return "";
+  if (type.includes(" - ")) {
+    return type.split(" - ")[0].trim();
+  }
+  return type.trim();
+}
+
+const [selectedCategory, setSelectedCategory] = useState(null);
+
+const totals = {};
+
+filteredexpenses.forEach((exp) => {
+  const category = getMainCategory(exp.type);
+  const amount = Number(exp.actual_to_pay || exp.amount || 0);
+  if (!totals[category]) totals[category] = 0;
+  totals[category] += amount;
+});
+
+const filteredRightSide = selectedCategory
+  ? filteredexpenses.filter(
+      (exp) => getMainCategory(exp.type) === selectedCategory
+    )
+  : filteredexpenses;
+
+  const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
+
   return (
-    <div style={{ padding: "1rem", width: "100%", position: "relative", marginBottom: 300 }}>
+    <div style={{
+    display: "flex",
+    flexDirection: "row",
+    width: "100%",
+    gap: "20px",
+    alignItems: "flex-start",  // 👈 keeps both tables aligned at top
+  }}>
       {/* Filter controls */}
    {/* --- FILTER BAR --- */}
 <div
@@ -418,283 +450,361 @@ const handleUpdateExpense = async (updatedExp) => {
   )}
 </div>
 
-{/* --- TABLE --- */}
-<TableContainer
-  component={Paper}
-  sx={{ maxHeight: 420, overflowX: "auto", marginTop: "250px" }}
->
-<Divider style={{padding:"5px",backgroundColor:"rgba(201, 197, 221, 0.8)",fontWeight:"bold",color:"black"}}>
-  {new Date(monthYear + "-01").toLocaleString("en-GB", {
-    month: "short",
-    year: "numeric",
-  }).replace(" ", "-")}
-</Divider>
-  <Table stickyHeader>
-    <TableHead>
-      <TableRow style={{ backgroundColor: "whitesmoke" }}>
-        <TableCell style={{ fontWeight: "bold" }}>Regular</TableCell>
-        <TableCell style={{ fontWeight: "bold" }}>Type of Expense</TableCell>
-        <TableCell style={{ fontWeight: "bold" }}>Amount</TableCell>
-        <TableCell style={{ fontWeight: "bold" }}>Actual To Pay</TableCell>
+{/* --- Left TABLE --- */}
+<div style={{ width: "28%" }}>
+  <TableContainer
+    component={Paper}
+    sx={{
+      maxHeight: 430,
+      overflowX: "auto",
+      borderRadius: "12px",
+      boxShadow: "0px 4px 10px rgba(0,0,0,0.1)",
+      border: "1px solid #e1e1e1",
+    }}
+  >
+    <Table stickyHeader>
 
-        <TableCell
-          style={{
-            fontWeight: "bold",
-            backgroundColor: "#f4d9aaff",
-            color: "#634b03ff",
-            textAlign: "center",
-          }}
-        >
-          Due Date
-        </TableCell>
-
-        <TableCell style={{ fontWeight: "bold" }}>Status</TableCell>
-        <TableCell style={{ fontWeight: "bold" }}>Paid Date</TableCell>
-        <TableCell style={{ fontWeight: "bold" }}>Action</TableCell>
-      </TableRow>
-    </TableHead>
-
-
-<TableBody>
-
-  {/* 1️⃣ If NO expenses returned from API */}
-  {expenses.length === 0 && selectedMonthYear && filteredexpenses.length === 0 ? (
-    <TableRow>
-      <TableCell colSpan={8} style={{
-        padding: "20px",
-        textAlign: "center",
-        fontWeight: "bold",
-        color: "crimson",
-        fontSize: "15px"
-      }}>
-        No expenses found for this month
-      </TableCell>
-    </TableRow>
-  ) : null}
-
-  {/* 2️⃣ If expenses exist but user has NOT clicked Search yet */}
-  {expenses.length > 0 && filteredexpenses.length === 0 && selectedMonthYear ? (
-    <TableRow>
-      <TableCell colSpan={8} style={{
-        padding: "20px",
-        textAlign: "center",
-        fontWeight: "bold",
-        color: "indianred",
-        fontSize: "15px"
-      }}>
-        Click Search to load Expenses for Selected Month
-      </TableCell>
-    </TableRow>
-  ) : null}
-
-  {/* 3️⃣ Show actual filtered rows */}
-  {filteredexpenses.map((exp, index) => (
-    <TableRow
-      key={index}
-      hover
-      sx={{ cursor: "pointer" }}
-      onClick={() => {
-        setSelectedExpense(exp);
-        setOpenDetailDialog(true);
-      }}
-    >
-      {/* ---- your existing table columns below ---- */}
-
-      <TableCell>{exp.regular}</TableCell>
-      <TableCell>{exp.type}</TableCell>
-      <TableCell>{formatCurrency(exp.amount)}</TableCell>
-
-      <TableCell style={{ fontWeight: "bold" }}>
-  {exp.paymentstatus === "Paid" ? (
-    // ----------- PAID -----------
-    <div style={{ display: "flex", flexDirection: "column" }}>
-      <span style={{ color: "green", fontWeight: "bold" }}>
-        Paid: {formatCurrency(exp.paid_amount)}
-      </span>
-      <span style={{ fontSize: "12px", color: "gray" }}>
-        Date: {
-          exp.paid_date
-            ? new Date(exp.paid_date)
-                .toLocaleDateString("en-GB")
-                .replaceAll("/", "-")
-            : "-"
-        }
-      </span>
-    </div>
-  ) : exp.actual_to_pay ? (
-    // ----------- UPDATED BUT NOT PAID -----------
-    <div style={{ display: "flex", flexDirection: "column" }}>
-      <span>{formatCurrency(exp.actual_to_pay)}</span>
-      <span style={{ fontSize: "12px", color: "gray" }}>
-        Due: {
-          exp.due_date
-            ? new Date(exp.due_date)
-                .toLocaleDateString("en-GB")
-                .replaceAll("/", "-")
-            : "-"
-        }
-      </span>
-    </div>
-  ) : (
-    // ----------- NOT UPDATED -----------
-    <Link
-      onClick={(e) => {
-        e.stopPropagation();
-        setUpdateExpense(exp);
-        setOpenUpdateDialog(true);
-      }}
-      style={{ cursor: "pointer" }}
-    >
-      Update
-    </Link>
-  )}
-</TableCell>
-
-
-          {/* Due Date */}
-     <TableCell
-  style={{
-    textAlign: "center",
-    fontWeight: "bold",
-    ...(() => {
-      const due = new Date(exp.due_date);
-      let displayedDate = new Date(due);
-
-      if (exp.regular === "Yes" && selectedMonthYear) {
-        const selected = new Date(selectedMonthYear + "-01");
-        const monthDiff =
-          (selected.getFullYear() - due.getFullYear()) * 12 +
-          (selected.getMonth() - due.getMonth());
-        displayedDate.setMonth(due.getMonth() + monthDiff + 1);
-      }
-
-      // compute difference for styling
-      const daysDiff = (displayedDate - new Date()) / (1000 * 60 * 60 * 24);
-
-      // dynamic colors based on displayed date
-      let backgroundColor, color;
-      if (daysDiff < 0) {
-        backgroundColor = "#f8d7da"; // past due
-        color = "#721c24";
-      } else if (daysDiff <= 3) {
-        backgroundColor = "#fff3cd"; // due soon
-        color = "#856404";
-      } else {
-        backgroundColor = "#d1ecf1"; // safe
-        color = "#0c5460";
-      }
-
-      return {
-        backgroundColor,
-        color,
-      };
-    })(),
-  }}
->
-  {(() => {
-    const due = new Date(exp.due_date);
-    let displayedDate = new Date(due);
-
-    if (exp.regular === "Yes" && selectedMonthYear) {
-      const selected = new Date(selectedMonthYear + "-01");
-      const monthDiff =
-        (selected.getFullYear() - due.getFullYear()) * 12 +
-        (selected.getMonth() - due.getMonth());
-      displayedDate.setMonth(due.getMonth() + monthDiff + 1);
-    }
-
-    return displayedDate.toLocaleDateString("en-GB").replaceAll("/", "-");
-  })()}
-</TableCell>
-
-
-
-
-
-          {/* Payment Status */}
-        <TableCell
-  sx={{
-    fontWeight: "bold",
-    color:
-      exp.paymentstatus === "Paid"
-        ? "green"
-        : exp.paymentstatus === "Hold"
-        ? "gray"
-        : exp.paymentstatus === "Rejected"
-        ? "red"
-        : exp.paymentstatus === "Raised"
-        ? "blue"
-        : exp.paymentstatus === "Pending" || exp.paymentstatus === "Pending" || !exp.paymentstatus
-        ? "orange"
-        : "black", // fallback color
-  }}
->
-  {exp.paymentstatus || "Pending"}
-</TableCell>
-
-
-
-          {/* Paid Date */}
-         <TableCell>
-  {exp.paid_date &&
-  exp.paid_date !== "00-00-0000" &&
-  !isNaN(Date.parse(exp.paid_date)) ? (
-    new Date(exp.paid_date).toLocaleDateString("en-GB").replaceAll("/", "-")
-  ) : (
-    <span style={{ color: "red", fontWeight: 600 }}>Not Paid</span>
-  )}
-</TableCell>
-
-
-          {/* Pay Button */}
-      <TableCell>
-  {exp.paymentstatus === "Paid" ? (
-  <VerifiedRoundedIcon 
-    style={{ 
-      color: "green", 
-      fontSize: "32px", 
-      transform: "rotate(-10deg)" 
-    }} 
-  />
-)  : !exp.actual_to_pay ? (
-    <Button
-      variant="contained"
-      size="small"
-      sx={{ backgroundColor: "gray", fontWeight: "bold" }}
-      disabled
-      onClick={(e) => e.stopPropagation()}
-    >
-      Pay
-    </Button>
-  ) : (
-    <Button
-      variant="contained"
-      size="small"
-      sx={{
-        backgroundColor: "rgba(7, 186, 126, 0.8)",
-        fontWeight: "bold",
-      }}
-      onClick={(e) => {
-        e.stopPropagation();
-        setPayExpense(exp);
-        setPaidDate(new Date().toISOString().split("T")[0]);
-        setPaidAmount(exp.actual_to_pay);
-        setOpenPayDialog(true);
-      }}
-    >
-      Pay
-    </Button>
-  )}
-</TableCell>
-
-
-
-
+      {/* ✅ NEW TOTAL ROW */}
+      <TableHead>
+        <TableRow style={{ backgroundColor: "#f0f2ff" }}>
+          <TableCell
+            colSpan={2}
+            style={{
+              fontWeight: "800",
+              fontSize: "15px",
+              color: "#3071a3ff",
+              padding: "14px",
+              textAlign: "center",
+              fontFamily:"monospace"
+            }}
+          >
+            TOTAL — {formatCurrency(grandTotal)}
+          </TableCell>
         </TableRow>
-      ))}
-    </TableBody>
-  </Table>
-</TableContainer>
+
+        <TableRow style={{ backgroundColor: "#f7f7fb" }}>
+          <TableCell
+            style={{
+              fontWeight: "700",
+              fontSize: "16px",
+              color: "#444",
+              padding: "12px",
+            }}
+          >
+            Category
+          </TableCell>
+
+          <TableCell
+            style={{
+              fontWeight: "700",
+              fontSize: "16px",
+              color: "#444",
+              padding: "12px",
+              textAlign: "right",
+            }}
+          >
+            Total
+          </TableCell>
+        </TableRow>
+      </TableHead>
+
+      <TableBody>
+        {Object.keys(totals).map((cat) => (
+          <TableRow
+            key={cat}
+            hover
+            sx={{
+              cursor: "pointer",
+              backgroundColor:
+                selectedCategory === cat ? "rgba(99, 102, 241, 0.1)" : "white",
+              transition: "0.2s",
+              "&:hover": {
+                backgroundColor: "rgba(99, 102, 241, 0.08)",
+              },
+            }}
+            onClick={() => setSelectedCategory(cat)}
+          >
+            <TableCell
+              style={{
+                fontSize: "15px",
+                padding: "12px",
+                fontWeight: "600",
+              }}
+            >
+              <span
+                style={{
+                  padding: "4px 8px",
+                  backgroundColor: "rgba(99, 102, 241, 0.12)",
+                  borderRadius: "8px",
+                  fontSize: "14px",
+                  color: "#4f46e5",
+                  fontWeight: "600",
+                }}
+              >
+                {cat}
+              </span>
+            </TableCell>
+
+            <TableCell
+              style={{
+                fontWeight: "700",
+                fontSize: "15px",
+                padding: "12px",
+                textAlign: "right",
+                color: "#111827",
+              }}
+            >
+              {formatCurrency(totals[cat])}
+            </TableCell>
+          </TableRow>
+        ))}
+
+        {/* Reset row */}
+        <TableRow
+          hover
+          sx={{
+            cursor: "pointer",
+            backgroundColor: "#eef5ff",
+            "&:hover": { backgroundColor: "#dce8ff" },
+          }}
+          onClick={() => setSelectedCategory(null)}
+        >
+          <TableCell
+            colSpan={2}
+            style={{
+              textAlign: "center",
+              color: "#2563eb",
+              fontWeight: "700",
+              padding: "12px",
+            }}
+          >
+            Show All
+          </TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
+  </TableContainer>
+</div>
+
+
+
+{/* Right Table */}
+<div style={{ width: "80%" }}>
+  <TableContainer
+    component={Paper}
+    sx={{
+      maxHeight: 430,
+      overflowX: "auto",
+      borderRadius: "12px",
+      boxShadow: "0px 4px 12px rgba(0,0,0,0.1)",
+      border: "1px solid #e3e3e3",
+    }}
+  >
+    <Divider
+      style={{
+        padding: "10px",
+        backgroundColor: "rgba(201, 197, 221, 0.8)",
+        fontWeight: "700",
+        color: "#2b2b2b",
+        fontSize: "16px",
+        borderTopLeftRadius: "12px",
+        borderTopRightRadius: "12px",
+      }}
+    >
+      {new Date(monthYear + "-01")
+        .toLocaleString("en-GB", { month: "short", year: "numeric" })
+        .replace(" ", "-")}{" "}
+      —{" "}
+      <span style={{ color: "#4f46e5" }}>
+        {selectedCategory || "All Expenses"}
+      </span>
+    </Divider>
+
+    <Table stickyHeader>
+      <TableHead>
+        <TableRow style={{ backgroundColor: "#f7f7fb" }}>
+          <TableCell style={{ fontWeight: "700", fontSize: "14px" }}>Regular</TableCell>
+          <TableCell style={{ fontWeight: "700", fontSize: "14px" }}>Type</TableCell>
+          <TableCell style={{ fontWeight: "700", fontSize: "14px" }}>Amount</TableCell>
+          <TableCell style={{ fontWeight: "700", fontSize: "14px" }}>Actual To Pay</TableCell>
+          <TableCell style={{ fontWeight: "700", fontSize: "14px" }}>Status</TableCell>
+          <TableCell style={{ fontWeight: "700", fontSize: "14px" }}>Paid Date</TableCell>
+          <TableCell style={{ fontWeight: "700", fontSize: "14px" }}>Action</TableCell>
+        </TableRow>
+      </TableHead>
+
+      <TableBody>
+        {filteredRightSide.map((exp, index) => (
+          <TableRow
+            key={index}
+            hover
+            sx={{
+              cursor: "pointer",
+              transition: "0.2s",
+              "&:hover": {
+                backgroundColor: "rgba(99, 102, 241, 0.07)",
+              },
+            }}
+            onClick={() => {
+              setSelectedExpense(exp);
+              setOpenDetailDialog(true);
+            }}
+          >
+            <TableCell style={{ fontSize: "14px" }}>{exp.regular}</TableCell>
+
+            <TableCell style={{ fontSize: "14px", fontWeight: "600" }}>
+              <span
+                style={{
+                  padding: "4px 8px",
+                  backgroundColor: "rgba(99, 102, 241, 0.12)",
+                  borderRadius: "8px",
+                  fontSize: "13px",
+                  color: "#4f46e5",
+                  fontWeight: "600",
+                }}
+              >
+                {exp.type}
+              </span>
+            </TableCell>
+
+            <TableCell style={{ fontSize: "14px", fontWeight: "600" }}>
+              {formatCurrency(exp.amount)}
+            </TableCell>
+
+            {/* === Actual To Pay === */}
+            <TableCell style={{ fontWeight: "600", fontSize: "14px" }}>
+              {exp.paymentstatus === "Paid" ? (
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <span style={{ color: "green", fontWeight: "700" }}>
+                    Paid: {formatCurrency(exp.paid_amount)}
+                  </span>
+                  <span style={{ fontSize: "12px", color: "#6b7280" }}>
+                    Date:{" "}
+                    {exp.paid_date
+                      ? new Date(exp.paid_date)
+                          .toLocaleDateString("en-GB")
+                          .replaceAll("/", "-")
+                      : "-"}
+                  </span>
+                </div>
+              ) : exp.actual_to_pay ? (
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <span>{formatCurrency(exp.actual_to_pay)}</span>
+                  <span style={{ fontSize: "12px", color: "#6b7280" }}>
+                    Due:{" "}
+                    {exp.due_date
+                      ? new Date(exp.due_date)
+                          .toLocaleDateString("en-GB")
+                          .replaceAll("/", "-")
+                      : "-"}
+                  </span>
+                </div>
+              ) : (
+                <Link
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setUpdateExpense(exp);
+                    setOpenUpdateDialog(true);
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                    color: "#2563eb",
+                    fontWeight: "600",
+                  }}
+                >
+                  Update
+                </Link>
+              )}
+            </TableCell>
+
+            {/* === Status === */}
+            <TableCell
+              style={{
+                fontWeight: "700",
+                color:
+                  exp.paymentstatus === "Paid"
+                    ? "green"
+                    : exp.paymentstatus === "Hold"
+                    ? "gray"
+                    : exp.paymentstatus === "Rejected"
+                    ? "red"
+                    : exp.paymentstatus === "Raised"
+                    ? "#2563eb"
+                    : "orange",
+                fontSize: "14px",
+              }}
+            >
+              {exp.paymentstatus || "Pending"}
+            </TableCell>
+
+            {/* === Paid Date === */}
+            <TableCell style={{ fontSize: "14px", fontWeight: "600" }}>
+              {exp.paid_date &&
+              exp.paid_date !== "00-00-0000" &&
+              !isNaN(Date.parse(exp.paid_date)) ? (
+                new Date(exp.paid_date)
+                  .toLocaleDateString("en-GB")
+                  .replaceAll("/", "-")
+              ) : (
+                <span style={{ color: "red", fontWeight: "700" }}>
+                  Not Paid
+                </span>
+              )}
+            </TableCell>
+
+            {/* === Action (Pay Button) === */}
+            <TableCell>
+              {exp.paymentstatus === "Paid" ? (
+                <VerifiedRoundedIcon
+                  style={{
+                    color: "green",
+                    fontSize: "32px",
+                    transform: "rotate(-10deg)",
+                  }}
+                />
+              ) : !exp.actual_to_pay ? (
+                <Button
+                  variant="contained"
+                  size="small"
+                  sx={{
+                    backgroundColor: "#9ca3af",
+                    fontWeight: "700",
+                    borderRadius: "6px",
+                  }}
+                  disabled
+                >
+                  Pay
+                </Button>
+              ) : (
+                <Button
+                  variant="contained"
+                  size="small"
+                  sx={{
+                    backgroundColor: "rgba(7, 186, 126, 0.85)",
+                    fontWeight: "700",
+                    borderRadius: "6px",
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPayExpense(exp);
+                    setPaidDate(new Date().toISOString().split("T")[0]);
+                    setPaidAmount(exp.actual_to_pay);
+                    setOpenPayDialog(true);
+                  }}
+                >
+                  Pay
+                </Button>
+              )}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  </TableContainer>
+</div>
+
+
 
 
 {/* Update Actual TO pay Dialog */}
