@@ -49,7 +49,6 @@ const SectionTable = ({ title, columns = [], rows = [] }) => {
 
   return (
     <div style={{ marginTop: 28 }}>
-      {/* Title */}
       <div
         style={{
           fontSize: "1.2rem",
@@ -66,12 +65,12 @@ const SectionTable = ({ title, columns = [], rows = [] }) => {
         {title}
       </div>
 
-      {/* Table */}
       <TableContainer
         component={Paper}
         style={{
           borderRadius: 10,
-          overflow: "hidden",
+          overflowY: "auto",
+          overflowX: "hidden",
           boxShadow: "0 3px 10px rgba(0,0,0,0.12)",
           maxHeight: 300,
         }}
@@ -103,11 +102,6 @@ const SectionTable = ({ title, columns = [], rows = [] }) => {
                   background: rIdx % 2 === 0 ? "#ffffff" : "#f8fafc",
                   transition: "0.2s",
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#e0f2fe")}
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.background =
-                    rIdx % 2 === 0 ? "#ffffff" : "#f8fafc")
-                }
               >
                 {columns.map((col, cIdx) => {
                   const value =
@@ -145,9 +139,9 @@ export default function ForcastingDashboard() {
   const [filtered, setFiltered] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [monthlyAccBalance,setMonthlyAccBalance]= useState([]);
+  const [monthlyAccBalance, setMonthlyAccBalance] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState(null);
   const [error, setError] = useState(null);
-const [monthlyBalances, setMonthlyBalances] = useState([]);
 
   
   const [fromMonth, setFromMonth] = useState(() => {
@@ -183,11 +177,7 @@ const [monthlyBalances, setMonthlyBalances] = useState([]);
 
         setSummary(s);
         setFiltered(s);
-        setFromMonth(s[0]?.month);
-        setToMonth(s[s.length - 1]?.month);
       }
-    } catch (err) {
-      setError(err.message || "Error fetching forecast");
     } finally {
       setLoading(false);
     }
@@ -197,68 +187,158 @@ const [monthlyBalances, setMonthlyBalances] = useState([]);
     fetchForecast();
   }, []);
 
-  // const handleSearch = () => {
-  //   const out = summary.filter((s) => s.month >= fromMonth && s.month <= toMonth);
-  //   setFiltered(out);
-  // };
-const handleSearch = async () => {
-  if (!fromMonth) {
-    alert("Please select From month");
-    return;
-  }
+  const handleSearch = async () => {
+    if (!fromMonth) {
+      alert("Please select From month");
+      return;
+    }
 
-  try {
-    const response = await axios.get("http://localhost:7760/monthly-last-balances", {
-      params: { fromMonth }
-    });
-       console.log(response)
-       setMonthlyAccBalance(response.data);
-       const out = summary.filter((s) => s.month >= fromMonth && s.month <= toMonth);
-    setFiltered(out);
+    try {
+      const res = await axios.get("http://localhost:7760/monthly-last-balances", {
+        params: { month: fromMonth },
+      });
 
-  } catch (err) {
-    console.error(err);
-    alert("Failed to fetch data");
-  }
-};
+      const lastBalance = res.data.data?.[0]?.updated_balance || 0;
+      setMonthlyAccBalance(lastBalance);
 
-
+      const out = summary.filter(
+        (s) => s.month >= fromMonth && s.month <= toMonth
+      );
+      setFiltered(out);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to fetch balance");
+    }
+  };
+  // Selected month details
   const monthDetails = useMemo(() => {
     if (!fullData || !selectedMonth) return null;
     return fullData.months?.find((m) => m.month === selectedMonth) || null;
   }, [fullData, selectedMonth]);
 
-  // 1️⃣ Sort months in order
-const sorted = [...filtered].sort(
-  (a, b) => new Date(a.month) - new Date(b.month)
-);
+  // Build merged income (ACTUAL + FORECAST)
+  const mergedIncome = useMemo(() => {
+    if (!monthDetails) return [];
 
+    const actual = monthDetails.actualIncomeItems || [];
+    const forecast = monthDetails.forecastIncomeItems || [];
 
-// 2️⃣ Calculate cumulative net cash flow
-let cumulative = 0;
-const withNetCashFlow = sorted.map((row) => {
-  cumulative += row.monthlyBalance;
-  return { ...row, netCashFlow: cumulative };
-});
+    return forecast.map((f) => {
+      const match = actual.find(
+        (a) =>
+          a.invoice_number === f.invoice_number ||
+          (a.project_id === f.project_id &&
+            Number(a.invoice_value) === Number(f.amount))
+      );
 
+      return {
+        ...f,
+        status: match ? "Received" : "Not Received",
+        received_date: match?.received_date || null,
+      };
+    });
+  }, [monthDetails]);
 
-useEffect(() => {
-  axios.get("http://localhost:7760/monthly-last-balances")
-    .then(res => setMonthlyBalances(res.data.data))
-    .catch(err => console.error(err));
-    console.log(monthlyBalances)
-}, []);
-const finalTableData = withNetCashFlow.map((row) => {
-  const bal = monthlyBalances.find((b) => b.month === row.month);
+  // Build merged EXPENSES (Actual + Forecast)
+  const mergedExpenses = useMemo(() => {
+    if (!monthDetails) return [];
 
-  return {
-    ...row,
-    accountBalance: bal ? bal.updated_balance : 0
+    const actual = monthDetails.actualExpenseItems || [];
+    const forecast = monthDetails.forecastExpenseItems || [];
+
+    return forecast.map((f) => {
+      const match = actual.find(
+        (a) =>
+          (a.expense_type || "").trim().toLowerCase() ===
+          (f.type || "").trim().toLowerCase()
+      );
+
+      return {
+        ...f,
+        regular: match?.regular || "Yes",
+        paid_amount: match ? match.paid_amount : 0,
+        paid_date: match ? match.paid_date : null,
+        status: match ? "Paid" : "Not Paid",
+        actual_amount: match ? match.amount : 0,
+      };
+    });
+  }, [monthDetails]);
+
+  // CATEGORY DETECTION (Salary, PF, TDS, PT, Insurance)
+  const MAIN = ["Salary", "PF", "Insurance", "PT", "TDS"];
+
+  const getCategory = (type) => {
+    if (!type) return "Others";
+
+    let cat = type.split(" - ")[0].trim();
+
+    if (cat.toLowerCase() === "professional tax") return "PT";
+
+    return MAIN.includes(cat) ? cat : type;
   };
-});
+
+  // Build Category Totals
+  const { categoryTotals, grandTotalExpenses } = useMemo(() => {
+    const totals = {};
+
+    mergedExpenses.forEach((exp) => {
+      const cat = getCategory(exp.type);
+
+      if (!totals[cat]) totals[cat] = 0;
+
+      totals[cat] += Number(exp.amount || 0);
+    });
+
+    return {
+      categoryTotals: totals,
+      grandTotalExpenses: Object.values(totals).reduce((a, b) => a + b, 0),
+    };
+  }, [mergedExpenses]);
+
+  // Acc Balance Calculation
+  const safeNumber = (v) => Number(v || 0);
+
+  const sorted = [...filtered].sort(
+    (a, b) => new Date(a.month) - new Date(b.month)
+  );
+
+  let cumulative = 0;
+  const withNet = sorted.map((row) => {
+    cumulative += row.monthlyBalance;
+    return { ...row, netCashFlow: cumulative };
+  });
+
+  const startBalance = safeNumber(monthlyAccBalance);
+  let runBal = startBalance;
+
+  const finalTableData = withNet.map((row, i) => {
+    if (i === 0) {
+      return { ...row, accountBalance: runBal };
+    }
+
+    runBal += safeNumber(row.monthlyBalance);
+
+    return { ...row, accountBalance: runBal };
+  });
+
+  const summaryCardStyle = {
+    backgroundColor: "#ffffff",
+    padding: "10px 14px",
+    borderRadius: "10px",
+    minWidth: "180px",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+    border: "1px solid #e5e7eb",
+  };
+
+  const summaryValueStyle = {
+    fontSize: "1.1rem",
+    marginTop: 4,
+    fontWeight: 700,
+  };
 
   return (
     <div style={{ padding: 20 }}>
+      {/* ================= SUMMARY UI ON TOP ================= */}
       <Typography
         variant="h5"
         align="center"
@@ -267,13 +347,12 @@ const finalTableData = withNetCashFlow.map((row) => {
         📅 Forecast — Month-wise Summary
       </Typography>
 
-      {/* Filters */}
+      {/* FILTER */}
       <div
         style={{
           display: "flex",
           gap: 12,
           justifyContent: "center",
-          alignItems: "center",
           marginBottom: 16,
         }}
       >
@@ -311,7 +390,7 @@ const finalTableData = withNetCashFlow.map((row) => {
         </Button>
       </div>
 
-      {/* Summary Table */}
+      {/* MAIN SUMMARY TABLE */}
       <Paper
         style={{
           borderRadius: 10,
@@ -321,66 +400,81 @@ const finalTableData = withNetCashFlow.map((row) => {
         }}
       >
         <Table stickyHeader size="small">
-         <TableHead>
-  <TableRow>
-    {[
-      "Month",
-      "Actual Income",
-      "Forecasted Income",
-      "Actual Expense",
-      "Forecasted Expense",
-      "Monthly Balance",
-      "Net Cash Flow", 
-      "Account Balance",
-      "Action",
-    ].map((head, idx) => (
-      <TableCell key={idx} style={{ backgroundColor: "#e2e8f0", fontWeight: 700, color: "#1e293b" }}>
-        {head}
-      </TableCell>
-    ))}
-  </TableRow>
-</TableHead>
+          <TableHead>
+            <TableRow>
+              {[
+                "Month",
+                "Actual Income",
+                "Forecast Income",
+                "Actual Expense",
+                "Forecast Expense",
+                "Monthly Balance",
+                "Account Balance",
+                "Action",
+              ].map((h, i) => (
+                <TableCell
+                  key={i}
+                  style={{
+                    backgroundColor: "#e2e8f0",
+                    fontWeight: 700,
+                  }}
+                >
+                  {h}
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
 
-<TableBody>
-  {finalTableData.map((row) => (
-    <TableRow key={row.month} hover>
-      <TableCell>{formatMonthLabel(row.month)}</TableCell>
-      <TableCell>{currency(row.actualIncome)}</TableCell>
-      <TableCell>{currency(row.forecastIncome)}</TableCell>
-      <TableCell>{currency(row.actualExpense)}</TableCell>
-      <TableCell>{currency(row.forecastExpense)}</TableCell>
+          <TableBody>
+            {finalTableData.map((row) => (
+              <TableRow key={row.month} hover>
+                <TableCell>{formatMonthLabel(row.month)}</TableCell>
+                <TableCell>{currency(row.actualIncome)}</TableCell>
+                <TableCell>{currency(row.forecastIncome)}</TableCell>
+                <TableCell>{currency(row.actualExpense)}</TableCell>
+                <TableCell>{currency(row.forecastExpense)}</TableCell>
+                <TableCell
+                  style={{
+                    fontWeight: 600,
+                    color: row.monthlyBalance >= 0 ? "green" : "red",
+                  }}
+                >
+                  {currency(row.monthlyBalance)}
+                </TableCell>
 
-      <TableCell style={{ fontWeight: 600, color: row.monthlyBalance >= 0 ? "green" : "red" }}>
-        {currency(row.monthlyBalance)}
-      </TableCell>
+                <TableCell>{currency(row.accountBalance)}</TableCell>
 
-      {/* ⭐ NEW: Net Cash Flow */}
-      <TableCell style={{ fontWeight: 600, color: row.netCashFlow >= 0 ? "green" : "red" }}>
-        {currency(row.netCashFlow)}
-      </TableCell>
-<TableCell>{currency(row.accountBalance)}</TableCell>
-      <TableCell>
-        <Button
-          size="small"
-          variant="contained"
-          style={{ backgroundColor: "#1e40af", color: "white", borderRadius: 6, textTransform: "none" }}
-          onClick={() => {
-            setSelectedMonth(row.month);
-            setDialogOpen(true);
-          }}
-        >
-          View
-        </Button>
-      </TableCell>
-    </TableRow>
-  ))}
-</TableBody>
-
+                <TableCell>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    style={{
+                      backgroundColor: "#1e40af",
+                      color: "white",
+                      borderRadius: 6,
+                      textTransform: "none",
+                    }}
+                    onClick={() => {
+                      setSelectedMonth(row.month);
+                      setDialogOpen(true);
+                    }}
+                  >
+                    View
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
         </Table>
       </Paper>
 
-      {/* Dialog */}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="xl">
+      {/* ===================== DIALOG BEGINS ===================== */}
+      <Dialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        fullWidth
+        maxWidth="xl"
+      >
         <DialogTitle>
           <div
             style={{
@@ -399,223 +493,230 @@ const finalTableData = withNetCashFlow.map((row) => {
         <DialogContent dividers>
           {monthDetails && (
             <>
-              {/* Summary Top Box */}
-            <div
-  style={{
-    background: "linear-gradient(90deg, #e0f2fe, #dbeafe)",
-    padding: "18px",
-    borderRadius: "12px",
-    marginBottom: "20px",
-    display: "flex",
-    flexWrap: "wrap",
-    gap: "16px",
-    justifyContent: "space-between",
-    boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
-  }}
->
-  {/* Actual Income */}
-  <div
-    style={{
-      backgroundColor: "#ffffff",
-      padding: "10px 14px",
-      borderRadius: "10px",
-      minWidth: "180px",
-      boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
-      border: "1px solid #e5e7eb",
-    }}
-  >
-    <span style={{ color: "#1e3a8a", fontWeight: 700 }}>Actual Income</span>
-    <div style={{ fontSize: "1.1rem", marginTop: 4, fontWeight: 700 }}>
-      {currency(monthDetails.actualIncomeTotal)}
-    </div>
-  </div>
+              {/* =======================
+                 INCOME OVERVIEW TABLE
+              ======================== */}
+              <SectionTable
+                title="Income Overview (Actual + Forecast)"
+                columns={[
+                  { header: "Project", render: (r) => r.projectName || r.project_id },
+                  { header: "Invoice No", render: (r) => r.invoice_number },
+                  { header: "Value (₹)", render: (r) => currency(r.invoice_value || r.amount) },
+                  { header: "GST (₹)", render: (r) => currency(r.gst_amount) },
+                  {
+                    header: "Date",
+                    render: (r) =>
+                      r.received_date
+                        ? new Date(r.received_date).toLocaleDateString("en-GB")
+                        : r.due_date
+                        ? new Date(r.due_date).toLocaleDateString("en-GB")
+                        : "-",
+                  },
+                  {
+                    header: "Status",
+                    render: (r) =>
+                      r.status === "Received" ? (
+                        <span style={{ color: "green", fontWeight: 700 }}>✔ Received</span>
+                      ) : (
+                        <span style={{ color: "red", fontWeight: 700 }}>✖ Not Received</span>
+                      ),
+                  },
+                ]}
+                rows={mergedIncome}
+              />
 
-  {/* Forecast Income */}
-  <div
-    style={{
-      backgroundColor: "#ffffff",
-      padding: "10px 14px",
-      borderRadius: "10px",
-      minWidth: "180px",
-      boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
-      border: "1px solid #e5e7eb",
-    }}
-  >
-    <span style={{ color: "#0f766e", fontWeight: 700 }}>Forecast Income</span>
-    <div style={{ fontSize: "1.1rem", marginTop: 4, fontWeight: 700 }}>
-      {currency(monthDetails.forecastIncomeTotal)}
-    </div>
-  </div>
+              {/* =======================
+                  EXPENSES OVERVIEW SECTION
+              ======================== */}
+              <div style={{ display: "flex", gap: "20px", marginTop: "30px" }}>
 
-  {/* Actual Expense */}
-  <div
-    style={{
-      backgroundColor: "#ffffff",
-      padding: "10px 14px",
-      borderRadius: "10px",
-      minWidth: "180px",
-      boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
-      border: "1px solid #e5e7eb",
-    }}
-  >
-    <span style={{ color: "#b91c1c", fontWeight: 700 }}>Actual Expense</span>
-    <div style={{ fontSize: "1.1rem", marginTop: 4, fontWeight: 700 }}>
-      {currency(monthDetails.actualExpenseTotal)}
-    </div>
-  </div>
+                {/* LEFT — CATEGORY TOTALS */}
+                <div style={{ width: "28%" }}>
+                  <TableContainer
+                    component={Paper}
+                    sx={{
+                      maxHeight: 430,
+                      overflowX: "auto",
+                      borderRadius: "12px",
+                      boxShadow: "0px 4px 10px rgba(0,0,0,0.1)",
+                      border: "1px solid #e1e1e1",
+                    }}
+                  >
+                    <Table stickyHeader>
 
-  {/* Forecast Expense */}
-  <div
-    style={{
-      backgroundColor: "#ffffff",
-      padding: "10px 14px",
-      borderRadius: "10px",
-      minWidth: "180px",
-      boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
-      border: "1px solid #e5e7eb",
-    }}
-  >
-    <span style={{ color: "#7c3aed", fontWeight: 700 }}>Forecast Expense</span>
-    <div style={{ fontSize: "1.1rem", marginTop: 4, fontWeight: 700 }}>
-      {currency(monthDetails.forecastExpenseTotal)}
-    </div>
-  </div>
+                      {/* TOTAL */}
+                      <TableHead>
+                        <TableRow style={{ backgroundColor: "#f0f2ff" }}>
+                          <TableCell
+                            colSpan={2}
+                            style={{
+                              fontWeight: 800,
+                              fontSize: "15px",
+                              color: "#3071a3",
+                              padding: "14px",
+                              textAlign: "center",
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            TOTAL — {currency(grandTotalExpenses)}
+                          </TableCell>
+                        </TableRow>
 
-  {/* Net Cash Flow */}
-  <div
-    style={{
-      backgroundColor: "#ffffff",
-      padding: "10px 14px",
-      borderRadius: "10px",
-      minWidth: "180px",
-      boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
-      border: "1px solid #e5e7eb",
-    }}
-  >
-    <span style={{ color: monthDetails.monthlyBalance >= 0 ? "#065f46" : "#b91c1c", fontWeight: 700 }}>
-      Net Cash Flow
-    </span>
-    <div
-      style={{
-        fontSize: "1.1rem",
-        marginTop: 4,
-        fontWeight: 700,
-        color: monthDetails.monthlyBalance >= 0 ? "green" : "red",
-      }}
-    >
-      {currency(monthDetails.monthlyBalance)}
-    </div>
-  </div>
-</div>
+                        {/* HEADERS */}
+                        <TableRow style={{ backgroundColor: "#f7f7fb" }}>
+                          <TableCell style={{ fontWeight: 700 }}>Category</TableCell>
+                          <TableCell style={{ fontWeight: 700, textAlign: "right" }}>
+                            Total
+                          </TableCell>
+                        </TableRow>
+                      </TableHead>
 
+                      {/* CATEGORY LIST */}
+                      <TableBody>
+                        {Object.keys(categoryTotals).map((cat) => (
+                          <TableRow
+                            key={cat}
+                            hover
+                            sx={{
+                              cursor: "pointer",
+                              backgroundColor:
+                                selectedCategory === cat
+                                  ? "rgba(99,102,241,0.1)"
+                                  : "white",
+                              "&:hover": {
+                                backgroundColor: "rgba(99,102,241,0.08)",
+                              },
+                            }}
+                            onClick={() => setSelectedCategory(cat)}
+                          >
+                            <TableCell>
+                              <span
+                                style={{
+                                  padding: "4px 8px",
+                                  backgroundColor: "rgba(99,102,241,0.12)",
+                                  borderRadius: "8px",
+                                  fontSize: "13px",
+                                  color: "#4f46e5",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {cat}
+                              </span>
+                            </TableCell>
 
-              {/* === 1st Row: Income Tables === */}
-<div
-  style={{
-    display: "flex",
-    gap: "20px",
-    marginTop: "10px",
-    marginBottom: "20px",
-  }}
->
-  {/* Actual Income */}
-  <div style={{ flex: 1, maxHeight: 300, overflow: "auto" }}>
-    <SectionTable
-      title="Actual Income (Received Invoices)"
-      columns={[
-        { header: "Project", render: (r) => r.project_id },
-        { header: "Invoice No", render: (r) => r.invoice_number },
-        { header: "Value (₹)", render: (r) => currency(r.invoice_value) },
-        { header: "GST (₹)", render: (r) => currency(r.gst_amount) },
-        {
-          header: "Received Date",
-          render: (r) =>
-            r.received_date
-              ? new Date(r.received_date).toLocaleDateString("en-GB")
-              : "-",
-        },
-      ]}
-      rows={monthDetails.actualIncomeItems}
-    />
-  </div>
+                            <TableCell style={{ fontWeight: 700, textAlign: "right" }}>
+                              {currency(categoryTotals[cat])}
+                            </TableCell>
+                          </TableRow>
+                        ))}
 
-  {/* Forecast Income */}
-  <div style={{ flex: 1, maxHeight: 300, overflow: "auto" }}>
-    <SectionTable
-      title="Forecasted Income (Due + Project)"
-      columns={[
-        { header: "Project", render: (r) => r.projectName || r.project_id },
-        { header: "Invoice No", render: (r) => r.invoice_number },
-        {
-          header: "Value (₹)",
-          render: (r) => currency(r.invoice_value || r.amount),
-        },
-        { header: "GST (₹)", render: (r) => currency(r.gst_amount) },
-        {
-          header: "Due Date",
-          render: (r) =>
-            r.due_date
-              ? new Date(r.due_date).toLocaleDateString("en-GB")
-              : "-",
-        },
-      ]}
-      rows={monthDetails.forecastIncomeItems}
-    />
-  </div>
-</div>
+                        {/* RESET */}
+                        <TableRow
+                          hover
+                          sx={{
+                            cursor: "pointer",
+                            backgroundColor: "#eef5ff",
+                            "&:hover": { backgroundColor: "#dce8ff" },
+                          }}
+                          onClick={() => setSelectedCategory("")}
+                        >
+                          <TableCell colSpan={2} style={{ textAlign: "center", fontWeight: 700 }}>
+                            Show All
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </div>
 
+                {/* RIGHT — EXPENSE DETAILS */}
+                <div style={{ width: "72%" }}>
+                  <TableContainer
+                    component={Paper}
+                    sx={{
+                      maxHeight: 430,
+                      overflowX: "auto",
+                      borderRadius: "12px",
+                      boxShadow: "0px 4px 12px rgba(0,0,0,0.1)",
+                      border: "1px solid #e3e3e3",
+                    }}
+                  >
+                    <Table stickyHeader>
+                      <TableHead>
+                        <TableRow style={{ backgroundColor: "#f7f7fb" }}>
+                          <TableCell>Regular</TableCell>
+                          <TableCell>Type</TableCell>
+                          <TableCell>Amount</TableCell>
+                          <TableCell>Paid Amount</TableCell>
+                          <TableCell>Status</TableCell>
+                          <TableCell>Paid Date</TableCell>
+                        </TableRow>
+                      </TableHead>
 
-{/* === 2nd Row: Expense Tables === */}
-<div
-  style={{
-    display: "flex",
-    gap: "20px",
-    marginTop: "20px",
-  }}
->
-  {/* Actual Expenses */}
-  <div style={{ flex: 1, maxHeight: 300, overflow: "auto" }}>
-    <SectionTable
-      title="Actual Expenses (Paid)"
-      columns={[
-        { header: "Expense", render: (r) => r.expense_type },
-        {
-          header: "Paid Amount (₹)",
-          render: (r) => currency(r.amount || r.paid_amount),
-        },
-        {
-          header: "Paid Date",
-          render: (r) =>
-            r.paid_date
-              ? new Date(r.paid_date).toLocaleDateString("en-GB")
-              : "-",
-        },
-      ]}
-      rows={monthDetails.actualExpenseItems}
-    />
-  </div>
+                      <TableBody>
+                        {mergedExpenses
+                          .filter((exp) => {
+                            if (!selectedCategory) return true;
 
-  {/* Forecasted Expenses */}
-  <div style={{ flex: 1, maxHeight: 300, overflow: "auto" }}>
-    <SectionTable
-      title="Forecasted Expenses"
-      columns={[
-        { header: "Expense", render: (r) => r.type },
-        { header: "Amount (₹)", render: (r) => currency(r.amount) },
-        { header: "Regular", render: (r) => r.regular || "-" },
-        {
-          header: "Due Date",
-          render: (r) =>
-            r.due_date
-              ? new Date(r.due_date).toLocaleDateString("en-GB")
-              : "-",
-        },
-      ]}
-      rows={monthDetails.forecastExpenseItems}
-    />
-  </div>
-</div>
-</>
+                            const cat = getCategory(exp.type);
+
+                            if (
+                              ["Salary", "PF", "Insurance", "PT", "TDS"].includes(
+                                selectedCategory
+                              )
+                            ) {
+                              return cat === selectedCategory;
+                            }
+
+                            return exp.type === selectedCategory;
+                          })
+                          .map((exp, idx) => (
+                            <TableRow key={idx} hover>
+                              <TableCell>{exp.regular || "-"}</TableCell>
+
+                              <TableCell>
+                                <span
+                                  style={{
+                                    padding: "4px 10px",
+                                    backgroundColor: "rgba(99,102,241,0.12)",
+                                    borderRadius: "8px",
+                                    color: "#4f46e5",
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {exp.type}
+                                </span>
+                              </TableCell>
+
+                              <TableCell>{currency(exp.amount)}</TableCell>
+
+                              <TableCell>{currency(exp.paid_amount)}</TableCell>
+
+                              <TableCell
+                                style={{
+                                  fontWeight: 700,
+                                  color:
+                                    exp.status === "Paid" ? "green" : "red",
+                                }}
+                              >
+                                {exp.status}
+                              </TableCell>
+
+                              <TableCell>
+                                {exp.paid_date
+                                  ? new Date(exp.paid_date)
+                                      .toLocaleDateString("en-GB")
+                                      .replaceAll("/", "-")
+                                  : "-"}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </div>
+              </div>
+            </>
           )}
         </DialogContent>
 
