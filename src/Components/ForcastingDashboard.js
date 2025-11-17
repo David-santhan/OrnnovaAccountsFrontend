@@ -239,29 +239,47 @@ export default function ForcastingDashboard() {
   }, [monthDetails]);
 
   // Build merged EXPENSES (Actual + Forecast)
-  const mergedExpenses = useMemo(() => {
-    if (!monthDetails) return [];
+const mergedExpenses = useMemo(() => {
 
-    const actual = monthDetails.actualExpenseItems || [];
-    const forecast = monthDetails.forecastExpenseItems || [];
+  if (!monthDetails) return [];
+ 
+  const actual = monthDetails.actualExpenseItems || [];
 
-    return forecast.map((f) => {
-      const match = actual.find(
-        (a) =>
-          (a.expense_type || "").trim().toLowerCase() ===
-          (f.type || "").trim().toLowerCase()
-      );
+  const forecast = monthDetails.forecastExpenseItems || [];
+ 
+  return forecast.map((f) => {
 
-      return {
-        ...f,
-        regular: match?.regular || "Yes",
-        paid_amount: match ? match.paid_amount : 0,
-        paid_date: match ? match.paid_date : null,
-        status: match ? "Paid" : "Not Paid",
-        actual_amount: match ? match.amount : 0,
-      };
-    });
-  }, [monthDetails]);
+    const match = actual.find(
+
+      (a) =>
+
+        (a.expense_type || "").trim().toLowerCase() ===
+
+        (f.type || "").trim().toLowerCase()
+
+    );
+ 
+    return {
+
+      ...f,
+
+      regular: match ? match.regular : (f.regular || "No"),
+
+      paid_amount: match ? match.paid_amount : 0,
+
+      paid_date: match ? match.paid_date : null,
+
+      status: match ? "Paid" : "Not Paid",
+
+      actual_amount: match ? match.amount : 0,
+
+    };
+
+  });
+
+}, [monthDetails]);
+
+ 
 
   // CATEGORY DETECTION (Salary, PF, TDS, PT, Insurance)
   const MAIN = ["Salary", "PF", "Insurance", "PT", "TDS"];
@@ -277,22 +295,35 @@ export default function ForcastingDashboard() {
   };
 
   // Build Category Totals
-  const { categoryTotals, grandTotalExpenses } = useMemo(() => {
-    const totals = {};
+const { categoryTotals, grandTotalExpenses } = useMemo(() => {
 
-    mergedExpenses.forEach((exp) => {
-      const cat = getCategory(exp.type);
+  const totals = {};
+ 
+  mergedExpenses.forEach((exp) => {
 
-      if (!totals[cat]) totals[cat] = 0;
+    const cat = getCategory(exp.type);
+ 
+    if (!totals[cat]) totals[cat] = 0;
+ 
+    // Use actual amount if available, otherwise forecast
 
-      totals[cat] += Number(exp.amount || 0);
-    });
+    const finalAmount = exp.actual_amount ? exp.actual_amount : exp.amount;
+ 
+    totals[cat] += Number(finalAmount || 0);
 
-    return {
-      categoryTotals: totals,
-      grandTotalExpenses: Object.values(totals).reduce((a, b) => a + b, 0),
-    };
-  }, [mergedExpenses]);
+  });
+ 
+  return {
+
+    categoryTotals: totals,
+
+    grandTotalExpenses: Object.values(totals).reduce((a, b) => a + b, 0),
+
+  };
+
+}, [mergedExpenses]);
+
+ 
 
   // Acc Balance Calculation
   const safeNumber = (v) => Number(v || 0);
