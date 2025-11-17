@@ -271,7 +271,7 @@ const filteredSalaries = allEmployees.flatMap((emp) => {
 
   if (view === "paidSalaries") {
     const currentPaid = monthlySalaryData.find(
-      (m) => m.employee_id === emp.employee_id && m.month === filterMonthYear
+      (m) => m.employee_id === emp.employee_id && m.month === filterMonthYear && m.paid === "Yes"
     );
     if (!currentPaid) return [];
 
@@ -303,8 +303,6 @@ const filteredSalaries = allEmployees.flatMap((emp) => {
 });
 
 
-
-
 // Totals
 const totalPaid = filteredSalaries
   .filter((s) => s.paid === "Yes")
@@ -322,8 +320,6 @@ const totalAll = filteredSalaries.reduce(
       : parseFloat(s.net_takehome || 0)),
   0
 );
-
-
 
   // ✅ Fetch salaries
   const fetchSalaries = async () => {
@@ -1314,6 +1310,7 @@ const handleSalaryUpdate = async () => {
 
 {/* Pending Salaries */}
 {view === "pendingSalaries" && (
+  
   <TableContainer component={Paper} elevation={3} style={{ width: "100%", height: "100%" }}>
     <Divider
   textAlign="center"
@@ -1344,37 +1341,68 @@ const handleSalaryUpdate = async () => {
           <TableCell style={{ fontWeight: "bold" }}>Month-Year</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>CTC</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>Net Take</TableCell>
+          <TableCell style={{ fontWeight: "bold" }}>Actual To Pay</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>Paid</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>Action</TableCell>
         </TableRow>
       </TableHead>
 
-      <TableBody>
-        {filteredSalaries.map((s) => (
-          <TableRow key={s.employee_id + s.month} hover onClick={() => setSelectedSalary(s)}>
-            <TableCell>{s.employee_id}</TableCell>
-            <TableCell>{s.employee_name}</TableCell>
-            <TableCell>{dayjs(s.month, "YYYY-MM").format("MMMM YYYY")}</TableCell>
-            <TableCell>{formatCurrency(s.ctc)}</TableCell>
-            <TableCell>{formatCurrency(s.net_takehome)}</TableCell>
-            <TableCell>
-              <span style={{ color: "red", fontWeight: "bold" }}>No</span>
-            </TableCell>
-            <TableCell>
-              <Button
-                variant="outlined"
-                color="secondary"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  monthlySalaryOpenDialog(s);
-                }}
-              >
-                Pay
-              </Button>
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
+  <TableBody>
+  {filteredSalaries.map((s) => {
+
+    // 1️⃣ Convert "2025 09" --> "2025-09"
+    const formattedMonth = s.month.replace(" ", "-");
+
+    // 2️⃣ Find matching record in monthlySalaryData
+    const salaryRecord = monthlySalaryData.find(
+      (m) =>
+        m.employee_id === s.employee_id &&
+        m.month === formattedMonth
+    );
+
+    // 3️⃣ If found, use actual_to_pay & due_date from monthlySalaryData
+    const actualToPayValue = salaryRecord?.actual_to_pay ?? s.actual_to_pay;
+    const dueDateValue = salaryRecord?.due_date ?? "-";
+
+    return (
+      <TableRow
+        key={s.employee_id + formattedMonth}
+        hover
+        onClick={() => setSelectedSalary(s)}
+      >
+        <TableCell>{s.employee_id}</TableCell>
+        <TableCell>{s.employee_name}</TableCell>
+
+        {/* Show original month */}
+        <TableCell>{s.month}</TableCell>
+
+        <TableCell>{formatCurrency(s.ctc)}</TableCell>
+        <TableCell>{formatCurrency(s.net_takehome)}</TableCell>
+
+        {/* ⭐ actual_to_pay coming from salaryRecord if exists */}
+        <TableCell>{formatCurrency(actualToPayValue)}</TableCell>
+
+        {/* ⭐ due_date coming from salaryRecord if exists */}
+        <TableCell>{dueDateValue}</TableCell>
+
+        <TableCell>
+          <Button
+            variant="outlined"
+            color="secondary"
+            onClick={(e) => {
+              e.stopPropagation();
+              monthlySalaryOpenDialog(s);
+            }}
+          >
+            Pay
+          </Button>
+        </TableCell>
+      </TableRow>
+    );
+  })}
+</TableBody>
+
+
     </Table>
   </TableContainer>
 )}
