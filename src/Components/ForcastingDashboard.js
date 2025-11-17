@@ -147,6 +147,7 @@ export default function ForcastingDashboard() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [error, setError] = useState(null);
 
+  
   const [fromMonth, setFromMonth] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 6);
@@ -193,6 +194,20 @@ export default function ForcastingDashboard() {
   useEffect(() => {
     fetchForecast();
   }, []);
+useEffect(() => {
+  if (!selectedAccountNumber) return;
+
+  fetch(`/bankAccountMonthlyBalance?account_number=${selectedAccountNumber}`)
+    .then((res) => res.json())
+    .then((data) => {
+      const map = {};
+      data.forEach((m) => {
+        map[m.month] = m.updated_balance;
+      });
+      setMonthlyBalances(map);
+    })
+    .catch((err) => console.error("Error fetching balances:", err));
+}, [selectedAccountNumber]);
 
   const handleSearch = () => {
     const out = summary.filter((s) => s.month >= fromMonth && s.month <= toMonth);
@@ -208,6 +223,7 @@ export default function ForcastingDashboard() {
 const sorted = [...filtered].sort(
   (a, b) => new Date(a.month) - new Date(b.month)
 );
+
 
 // 2️⃣ Calculate cumulative net cash flow
 let cumulative = 0;
