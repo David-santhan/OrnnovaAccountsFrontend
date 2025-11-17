@@ -145,7 +145,9 @@ export default function ForcastingDashboard() {
   const [filtered, setFiltered] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [monthlyAccBalance,setMonthlyAccBalance]= useState([]);
   const [error, setError] = useState(null);
+const [monthlyBalances, setMonthlyBalances] = useState([]);
 
   
   const [fromMonth, setFromMonth] = useState(() => {
@@ -209,10 +211,31 @@ useEffect(() => {
     .catch((err) => console.error("Error fetching balances:", err));
 }, [selectedAccountNumber]);
 
-  const handleSearch = () => {
-    const out = summary.filter((s) => s.month >= fromMonth && s.month <= toMonth);
+  // const handleSearch = () => {
+  //   const out = summary.filter((s) => s.month >= fromMonth && s.month <= toMonth);
+  //   setFiltered(out);
+  // };
+const handleSearch = async () => {
+  if (!fromMonth) {
+    alert("Please select From month");
+    return;
+  }
+
+  try {
+    const response = await axios.get("http://localhost:7760/monthly-last-balances", {
+      params: { fromMonth }
+    });
+       console.log(response)
+       setMonthlyAccBalance(response.data);
+       const out = summary.filter((s) => s.month >= fromMonth && s.month <= toMonth);
     setFiltered(out);
-  };
+
+  } catch (err) {
+    console.error(err);
+    alert("Failed to fetch data");
+  }
+};
+
 
   const monthDetails = useMemo(() => {
     if (!fullData || !selectedMonth) return null;
@@ -230,6 +253,22 @@ let cumulative = 0;
 const withNetCashFlow = sorted.map((row) => {
   cumulative += row.monthlyBalance;
   return { ...row, netCashFlow: cumulative };
+});
+
+
+useEffect(() => {
+  axios.get("http://localhost:7760/monthly-last-balances")
+    .then(res => setMonthlyBalances(res.data.data))
+    .catch(err => console.error(err));
+    console.log(monthlyBalances)
+}, []);
+const finalTableData = withNetCashFlow.map((row) => {
+  const bal = monthlyBalances.find((b) => b.month === row.month);
+
+  return {
+    ...row,
+    accountBalance: bal ? bal.updated_balance : 0
+  };
 });
 
   return (
@@ -317,7 +356,7 @@ const withNetCashFlow = sorted.map((row) => {
 </TableHead>
 
 <TableBody>
-  {withNetCashFlow.map((row) => (
+  {finalTableData.map((row) => (
     <TableRow key={row.month} hover>
       <TableCell>{formatMonthLabel(row.month)}</TableCell>
       <TableCell>{currency(row.actualIncome)}</TableCell>
@@ -333,7 +372,7 @@ const withNetCashFlow = sorted.map((row) => {
       <TableCell style={{ fontWeight: 600, color: row.netCashFlow >= 0 ? "green" : "red" }}>
         {currency(row.netCashFlow)}
       </TableCell>
-
+<TableCell>{currency(row.accountBalance)}</TableCell>
       <TableCell>
         <Button
           size="small"

@@ -44,6 +44,8 @@ const [selectedMonthYear, setSelectedMonthYear] = useState("");
 const [isEditing, setIsEditing] = useState(false);
 const [openUpdateDialog, setOpenUpdateDialog] = useState(false);
 const [updateExpense, setUpdateExpense] = useState(null);
+const [holdExpense, setHoldExpense] = useState(null);
+const [openHoldDialog, setOpenHoldDialog] = useState(false);
 
  const [newExpense, setNewExpense] = useState({
   regular: "",
@@ -589,7 +591,7 @@ const filteredRightSide = selectedCategory
 
 
 {/* Right Table */}
-<div style={{ width: "80%" }}>
+<div style={{ width: "90%" }}>
   <TableContainer
     component={Paper}
     sx={{
@@ -754,56 +756,98 @@ const filteredRightSide = selectedCategory
             </TableCell>
 
             {/* === Action (Pay Button) === */}
-            <TableCell>
-              {exp.paymentstatus === "Paid" ? (
-                <VerifiedRoundedIcon
-                  style={{
-                    color: "green",
-                    fontSize: "32px",
-                    transform: "rotate(-10deg)",
-                  }}
-                />
-              ) : !exp.actual_to_pay ? (
-                <Button
-                  variant="contained"
-                  size="small"
-                  sx={{
-                    backgroundColor: "#9ca3af",
-                    fontWeight: "700",
-                    borderRadius: "6px",
-                  }}
-                  disabled
-                >
-                  Pay
-                </Button>
-              ) : (
-                <Button
-                  variant="contained"
-                  size="small"
-                  sx={{
-                    backgroundColor: "rgba(7, 186, 126, 0.85)",
-                    fontWeight: "700",
-                    borderRadius: "6px",
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setPayExpense(exp);
-                    setPaidDate(new Date().toISOString().split("T")[0]);
-                    setPaidAmount(exp.actual_to_pay);
-                    setOpenPayDialog(true);
-                  }}
-                >
-                  Pay
-                </Button>
-              )}
-            </TableCell>
+           <TableCell>
+  {exp.paymentstatus === "Paid" ? (
+    <VerifiedRoundedIcon
+      style={{
+        color: "green",
+        fontSize: "32px",
+        transform: "rotate(-10deg)",
+      }}
+    />
+  ) : !exp.actual_to_pay ? (
+    <Button
+      variant="contained"
+      size="small"
+      sx={{
+        backgroundColor: "#9ca3af",
+        fontWeight: "700",
+        borderRadius: "6px",
+        
+      }}
+      disabled
+    >
+      Pay
+    </Button>
+  ) : (
+    <>
+      {/* PAY BUTTON */}
+      <Button
+        variant="contained"
+        size="small"
+        sx={{
+          backgroundColor: "rgba(7, 186, 126, 0.85)",
+          fontWeight: "700",
+          borderRadius: "6px",
+          marginRight: "8px",
+          marginBottom:"7px"
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setPayExpense(exp);
+          setPaidDate(new Date().toISOString().split("T")[0]);
+          setPaidAmount(exp.actual_to_pay);
+          setOpenPayDialog(true);
+        }}
+      >
+        Pay
+      </Button>
+
+      {/* HOLD BUTTON */}
+      <Button
+        variant="contained"
+        size="small"
+        sx={{
+          backgroundColor: "#f59e0b",
+          fontWeight: "700",
+          borderRadius: "6px",
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setHoldExpense(exp);   // create this state
+          setOpenHoldDialog(true); // create dialog
+        }}
+      >
+        Hold
+      </Button>
+    </>
+  )}
+</TableCell>
+
           </TableRow>
         ))}
       </TableBody>
     </Table>
   </TableContainer>
 </div>
-
+{/* Hold Expense Dialog */}
+<Dialog open={openHoldDialog} onClose={() => setOpenHoldDialog(false)}>
+  <DialogTitle>Hold Expense</DialogTitle>
+  <DialogContent>
+    Are you sure you want to put this expense on hold?
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setOpenHoldDialog(false)}>Cancel</Button>
+    <Button
+      onClick={() => {
+        // handleHoldExpense(holdExpense); // create this API call
+        setOpenHoldDialog(false);
+      }}
+    >
+      Confirm
+    </Button>
+  </DialogActions>
+</Dialog>
 
 
 
@@ -1180,6 +1224,7 @@ const filteredRightSide = selectedCategory
     {snackbarMessage}
   </Alert>
 </Snackbar>
+
 {/* Pay Modal */}
 <Dialog
   open={openPayDialog}
@@ -1227,10 +1272,10 @@ const filteredRightSide = selectedCategory
   InputLabelProps={{ shrink: true }}
   value={paidDate}
   onChange={(e) => setPaidDate(e.target.value)}
-  inputProps={{
-    min: payExpense.raised_date, // cannot select before raised date
-    // max: new Date().toISOString().split("T")[0], // cannot select future date
-  }}
+  // inputProps={{
+  //   min: payExpense.raised_date, // cannot select before raised date
+  //   // max: new Date().toISOString().split("T")[0], // cannot select future date
+  // }}
   fullWidth
 />
 
