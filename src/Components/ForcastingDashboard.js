@@ -196,20 +196,6 @@ const [monthlyBalances, setMonthlyBalances] = useState([]);
   useEffect(() => {
     fetchForecast();
   }, []);
-useEffect(() => {
-  if (!selectedAccountNumber) return;
-
-  fetch(`/bankAccountMonthlyBalance?account_number=${selectedAccountNumber}`)
-    .then((res) => res.json())
-    .then((data) => {
-      const map = {};
-      data.forEach((m) => {
-        map[m.month] = m.updated_balance;
-      });
-      setMonthlyBalances(map);
-    })
-    .catch((err) => console.error("Error fetching balances:", err));
-}, [selectedAccountNumber]);
 
   // const handleSearch = () => {
   //   const out = summary.filter((s) => s.month >= fromMonth && s.month <= toMonth);
