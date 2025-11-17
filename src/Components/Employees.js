@@ -486,18 +486,6 @@ const [employeeToDelete, setEmployeeToDelete] = useState(null);
           />
         </Box>
         <Box flex={1}>
-  <TextField
-    label="CTC Effective From"
-    type="month"
-    fullWidth
-    value={formData.ctc_effective_from || ""}
-    InputProps={{ readOnly: !isEditing }}
-    InputLabelProps={{ shrink: true }}
-    onChange={(e) => handleChange("ctc_effective_from", e.target.value)}
-  />
-</Box>
-
-        <Box flex={1}>
           <TextField
             label="Skills"
             fullWidth
@@ -716,7 +704,6 @@ const [employeeToDelete, setEmployeeToDelete] = useState(null);
         { label: "Salary (CTC)", key: "ctc" },
         { label: "Skills", key: "skills" },
         { label: "Date of Joining", key: "date_of_joining", type: "date" }, // ✅ Added field
-         { label: "CTC Effective From", key: "ctc_effective_from", type: "month" }, // ✅ added
       ].map((field) => (
         <div key={field.key} style={{ flex: "1 1 45%" }}>
           <TextField

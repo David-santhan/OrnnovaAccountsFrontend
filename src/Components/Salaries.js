@@ -12,41 +12,39 @@ import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import dayjs from "dayjs";
 import axios from "axios";
 function Salaries() {
+  
   const [salaries, setSalaries] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [selectedSalary, setSelectedSalary] = useState(null);
   
   const [newSalary, setNewSalary] = useState({
-    employee_id: "",
-    employee_name: "",
-    month: new Date().toISOString().slice(0, 7), // default current month
-    paid: "No",
-    paid_date: "",
+  employee_id: "",
+  employee_name: "",
+  month: "",  // ← FIXED
+  paid: "No",
+  paid_date: "",
 
-    // Salary Components
-    basic_pay: "",
-    hra: "",
-    conveyance_allowance: "",
-    medical_allowance: "",
-    lta: "",
-    personal_allowance: "",
-    gross_salary: "",
-    ctc: "",
+  basic_pay: "",
+  hra: "",
+  conveyance_allowance: "",
+  medical_allowance: "",
+  lta: "",
+  personal_allowance: "",
+  gross_salary: "",
+  ctc: "",
 
-    // Employee Deductions
-    professional_tax: "",
-    insurance: "",
-    pf: "",
-    tds: "",
+  professional_tax: "",
+  insurance: "",
+  pf: "",
+  tds: "",
 
-    // Employer Contributions
-    employer_pf: "",
-    employer_health_insurance: "",
+  employer_pf: "",
+  employer_health_insurance: "",
 
-    // Final
-    net_takehome: "",
-  });
+  net_takehome: "",
+});
+
   const [view, setView] = useState(""); // allSalaries | paidSalaries | pendingSalaries
   const [showTotal, setShowTotal] = useState(false);
   const [mode, setMode] = useState("All");
@@ -60,14 +58,15 @@ function Salaries() {
 const [selectedSalaryRecord, setSelectedSalaryRecord] = useState(null);
 const [pendingSummary, setPendingSummary] = useState([]);
  const [monthlySalaryFormData, setMonthlySalaryFormData] = useState({
-  empId: "",            // employee_id from DB
-  empName: "",          // employee_name from DB
-  paid: "No",           // default
-  month: dayjs().format("YYYY-MM"),  // default to current month
-  lop: 0,               // editable
-  paidAmount: 0,        // editable
-  actualToPay: 0,       // read-only, NET TAKEHOME
+  empId: "",
+  empName: "",
+  paid: "No",
+  month: "",        // ❗ FIXED: do NOT set current month here
+  lop: 0,
+  paidAmount: 0,
+  actualToPay: 0,
 });
+
 const currentMonth = dayjs().format("YYYY-MM");
 const [openUpdateModal, setOpenUpdateModal] = useState(false);
 const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -102,21 +101,23 @@ useEffect(() => {
 
 
   // Open dialog
+// Open dialog
 const monthlySalaryOpenDialog = (emp) => {
-  const currentMonth = dayjs(month).format("YYYY-MM");
+  const dojMonth = dayjs(emp.date_of_joining).format("YYYY-MM");
 
-  // Find pending record for this employee & month
   const pending = pendingSummary.find(
     (p) =>
       p.employee_id === emp.employee_id &&
-      p.pending_months === currentMonth
+      p.pending_months === dojMonth
   );
+
+  const selectedMonth = pending?.pending_months || dojMonth;
 
   setMonthlySalaryFormData({
     empId: emp.employee_id,
     empName: emp.employee_name,
-    month: currentMonth,
-    actual_to_pay: pending?.actual_to_pay || emp.net_takehome || 0,
+    month: selectedMonth,   // ← Now correctly set here
+    actualToPay: pending?.actual_to_pay || emp.net_takehome || 0,
     paid: "Yes",
     lop: 0,
     paidAmount: pending?.actual_to_pay || emp.net_takehome || 0,
@@ -124,7 +125,6 @@ const monthlySalaryOpenDialog = (emp) => {
 
   setMonthlySalaryDialogOpen(true);
 };
-
 
 
 
@@ -1188,8 +1188,9 @@ const handleSalaryUpdate = async () => {
   onChange={monthlySalaryHandleChange}
   InputLabelProps={{ shrink: true }}
   fullWidth
-  disabled={monthlySalaryFormData.paid === "No"} // Disable if Paid is No
+  disabled={monthlySalaryFormData.paid === "No"}
 />
+
 
     </Box>
     <Box display="flex" gap={2}>
@@ -1533,21 +1534,39 @@ const handleSalaryUpdate = async () => {
       (emp) => emp.employee_id === newSalary.employee_id
     ) || null
   }
-  onChange={(event, newValue) => {
-    if (newValue) {
-      const ctc_monthly = parseFloat(newValue.ctc || 0);
-      setNewSalary(
-        calculateSalary({
-          ...newSalary,
-          employee_id: newValue.employee_id,
-          employee_name: newValue.employee_name,
-          ctc: ctc_monthly,
-        })
-      );
-    } else {
-      setNewSalary({});
+onChange={(event, newValue) => {
+  if (newValue) {
+    const ctc_monthly = parseFloat(newValue.ctc || 0);
+
+    // ⭐ 1. Compute month from DOJ
+    let dojMonth = "";
+    if (newValue.date_of_joining) {
+      dojMonth = newValue.date_of_joining.slice(0, 7); 
+      // Example: "2024-03"
     }
-  }}
+
+    // ⭐ 2. If backend has pending month for this employee, use that instead
+    const pending = pendingSummary?.find(
+      (p) => p.employee_id === newValue.employee_id
+    );
+
+    const finalMonth = pending?.pending_months || dojMonth || "";
+
+    // ⭐ 3. Set salary details
+    setNewSalary(
+      calculateSalary({
+        ...newSalary,
+        employee_id: newValue.employee_id,
+        employee_name: newValue.employee_name,
+        ctc: ctc_monthly,
+        month: finalMonth,   // ← Correct month
+      })
+    );
+  } else {
+    setNewSalary({});
+  }
+}}
+
   renderInput={(params) => (
     <TextField {...params} label="Employee" margin="dense" />
   )}
@@ -1624,32 +1643,37 @@ const handleSalaryUpdate = async () => {
           <TableCell>Monthly (₹)</TableCell>
         </TableRow>
       </TableHead>
-      <TableBody>
-        {[
-          { label: "Basic Pay", monthly: "basic_pay", yearly: "basic_pay_yearly" },
-          { label: "HRA", monthly: "hra", yearly: "hra_yearly" },
-          { label: "Conveyance", monthly: "conveyance_allowance", yearly: "conveyance_allowance_yearly" },
-          { label: "Medical Allowance", monthly: "medical_allowance", yearly: "medical_allowance_yearly" },
-          { label: "LTA", monthly: "lta", yearly: "lta_yearly" },
-          { label: "Personal Allowance", monthly: "personal_allowance", yearly: "personal_allowance_yearly" },
-        ].map(row => (
-          <TableRow key={row.label}>
-            <TableCell>{row.label}</TableCell>
-            <TableCell>
-              <TextField
-                value={newSalary[row.yearly] || ""}
-                InputProps={{ readOnly: true }}
-              />
-            </TableCell>
-            <TableCell>
-              <TextField
-                value={newSalary[row.monthly] || ""}
-                onChange={(e) => handleSalaryChange(row.monthly, e.target.value)}
-              />
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
+     <TableBody>
+  {[
+    { label: "Basic Pay", monthly: "basic_pay", yearly: "basic_pay_yearly" },
+    { label: "HRA", monthly: "hra", yearly: "hra_yearly" },
+    { label: "Conveyance", monthly: "conveyance_allowance", yearly: "conveyance_allowance_yearly" },
+    { label: "Medical Allowance", monthly: "medical_allowance", yearly: "medical_allowance_yearly" },
+    { label: "LTA", monthly: "lta", yearly: "lta_yearly" },
+    { label: "Personal Allowance", monthly: "personal_allowance", yearly: "personal_allowance_yearly" },
+  ].map(row => (
+    <TableRow key={row.label}>
+      <TableCell>{row.label}</TableCell>
+
+      {/* Yearly Field - Editable */}
+      <TableCell>
+        <TextField
+          value={newSalary[row.yearly] || ""}
+          onChange={(e) => handleSalaryChange(row.yearly, e.target.value)}
+        />
+      </TableCell>
+
+      {/* Monthly Field - Editable */}
+      <TableCell>
+        <TextField
+          value={newSalary[row.monthly] || ""}
+          onChange={(e) => handleSalaryChange(row.monthly, e.target.value)}
+        />
+      </TableCell>
+    </TableRow>
+  ))}
+</TableBody>
+
     </Table>
 
     {/* Deductions */}
