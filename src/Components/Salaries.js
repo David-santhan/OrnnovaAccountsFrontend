@@ -77,6 +77,19 @@ const [updateForm, setUpdateForm] = useState({
 });
 
 
+// 🔹 UNIVERSAL UPDATE HELPER — REQUIRED for Pending + All Salaries
+const openUpdateForEmployee = (emp, monthValue, actualToPay, dueDate) => {
+  setSelectedEmployee(emp);
+
+  setUpdateForm({
+    month: monthValue,                             // "YYYY-MM"
+    actual_to_pay: actualToPay ?? emp.net_takehome ?? "",
+    due_date: dueDate ?? "",
+  });
+
+  setOpenUpdateModal(true);
+};
+
 // get monthly Salaries by Month
 const fetchAllMonthlySalaries = async () => {
   try {
@@ -1310,28 +1323,27 @@ const handleSalaryUpdate = async () => {
 
 {/* Pending Salaries */}
 {view === "pendingSalaries" && (
-  
   <TableContainer component={Paper} elevation={3} style={{ width: "100%", height: "100%" }}>
     <Divider
-  textAlign="center"
-  sx={{
-    marginY: 2,
-    "&::before, &::after": {
-      borderColor: "block",
-    },
-  }}
->
-  <Typography
-    variant="h6"
-    sx={{
-      color: "block",
-      fontWeight: "bold",
-      letterSpacing: "0.5px",
-    }}
-  >
-    {dayjs(month, "YYYY-MM").format("MMMM YYYY")}
-  </Typography>
-</Divider>
+      textAlign="center"
+      sx={{
+        marginY: 2,
+        "&::before, &::after": {
+          borderColor: "block",
+        },
+      }}
+    >
+      <Typography
+        variant="h6"
+        sx={{
+          color: "block",
+          fontWeight: "bold",
+          letterSpacing: "0.5px",
+        }}
+      >
+        {dayjs(month, "YYYY-MM").format("MMMM YYYY")}
+      </Typography>
+    </Divider>
 
     <Table stickyHeader style={{ minWidth: "100%" }}>
       <TableHead style={{ backgroundColor: "#f5f5f5" }}>
@@ -1342,70 +1354,162 @@ const handleSalaryUpdate = async () => {
           <TableCell style={{ fontWeight: "bold" }}>CTC</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>Net Take</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>Actual To Pay</TableCell>
-          <TableCell style={{ fontWeight: "bold" }}>Paid</TableCell>
+          <TableCell style={{ fontWeight: "bold" }}>Due Date</TableCell>
           <TableCell style={{ fontWeight: "bold" }}>Action</TableCell>
         </TableRow>
       </TableHead>
 
-  <TableBody>
-  {filteredSalaries.map((s) => {
+      <TableBody>
+        {filteredSalaries.map((s) => {
+          // 1️⃣ Convert "2025 09" --> "2025-09" (your existing transform)
+          const formattedMonth = String(s.month).replace(" ", "-");
 
-    // 1️⃣ Convert "2025 09" --> "2025-09"
-    const formattedMonth = s.month.replace(" ", "-");
+          // 2️⃣ Find matching record in monthlySalaryData (existing saved record for this employee & month)
+          const salaryRecord = monthlySalaryData.find(
+            (m) => m.employee_id === s.employee_id && m.month === formattedMonth
+          );
 
-    // 2️⃣ Find matching record in monthlySalaryData
-    const salaryRecord = monthlySalaryData.find(
-      (m) =>
-        m.employee_id === s.employee_id &&
-        m.month === formattedMonth
-    );
+          // 3️⃣ Determine values to show (prefer saved record)
+          const actualToPayValue = salaryRecord?.actual_to_pay ?? s.actual_to_pay ?? s.net_takehome ?? 0;
+          const dueDateValue = salaryRecord?.due_date ?? s.due_date ?? null;
+          const paidStatus = salaryRecord?.paid ?? "No";
 
-    // 3️⃣ If found, use actual_to_pay & due_date from monthlySalaryData
-    const actualToPayValue = salaryRecord?.actual_to_pay ?? s.actual_to_pay;
-    const dueDateValue = salaryRecord?.due_date ?? "-";
+          // Build a minimal employee object for modal state (keeps same shape as All Salaries)
+          const emp = {
+            employee_id: s.employee_id,
+            employee_name: s.employee_name,
+            ctc: s.ctc,
+            net_takehome: s.net_takehome,
+          };
 
-    return (
-      <TableRow
-        key={s.employee_id + formattedMonth}
-        hover
-        onClick={() => setSelectedSalary(s)}
-      >
-        <TableCell>{s.employee_id}</TableCell>
-        <TableCell>{s.employee_name}</TableCell>
+          return (
+            <TableRow
+              key={s.employee_id + formattedMonth}
+              hover
+              onClick={() =>
+                setSelectedSalary({
+                  ...s,
+                  ...(salaryRecord || {}),
+                })
+              }
+            >
+              <TableCell>{s.employee_id}</TableCell>
+              <TableCell>{s.employee_name}</TableCell>
 
-        {/* Show original month */}
-        <TableCell>{s.month}</TableCell>
+              {/* show original month text */}
+              <TableCell>{s.month}</TableCell>
 
-        <TableCell>{formatCurrency(s.ctc)}</TableCell>
-        <TableCell>{formatCurrency(s.net_takehome)}</TableCell>
+              <TableCell>{formatCurrency(s.ctc)}</TableCell>
+              <TableCell>{formatCurrency(s.net_takehome)}</TableCell>
 
-        {/* ⭐ actual_to_pay coming from salaryRecord if exists */}
-        <TableCell>{formatCurrency(actualToPayValue)}</TableCell>
+              {/* Actual To Pay column now shows value and, when clicked, opens Update modal */}
+              <TableCell>
+                {salaryRecord ? (
+                  // If a record exists show detailed info (paid/unpaid)
+                  paidStatus === "No" ? (
+                    <>
+                      <Typography variant="body1" sx={{ fontWeight: "bold", color: "#374151" }}>
+                        {formatCurrency(actualToPayValue)}
+                      </Typography>
 
-        {/* ⭐ due_date coming from salaryRecord if exists */}
-        <TableCell>{dueDateValue}</TableCell>
+                      <Typography
+                        variant="caption"
+                        color={dueDateValue && dayjs(dueDateValue).isBefore(dayjs()) ? "error" : "textSecondary"}
+                        sx={{ display: "block", mt: 0.5 }}
+                      >
+                        Due: {dueDateValue ? dayjs(dueDateValue).format("DD-MMM-YYYY") : "-"}
+                      </Typography>
 
-        <TableCell>
-          <Button
-            variant="outlined"
-            color="secondary"
-            onClick={(e) => {
-              e.stopPropagation();
-              monthlySalaryOpenDialog(s);
-            }}
-          >
-            Pay
-          </Button>
-        </TableCell>
-      </TableRow>
-    );
-  })}
-</TableBody>
+                      <Link
+                        component="button"
+                        underline="hover"
+                        color="primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // open modal with existing record prefilled
+                          openUpdateForEmployee(emp, formattedMonth, actualToPayValue, dueDateValue);
+                        }}
+                        sx={{ display: "inline-block", mt: 0.5 }}
+                      >
+                        Update
+                      </Link>
+                    </>
+                  ) : (
+                    // Already paid
+                    <>
+                      <Typography variant="body1" sx={{ fontWeight: "bold", color: "green" }}>
+                        Paid: {formatCurrency(salaryRecord.paid_amount || actualToPayValue)}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: "green", display: "block", mt: 0.5 }}>
+                        Paid On: {salaryRecord.paid_date ? dayjs(salaryRecord.paid_date).format("DD-MMM-YYYY") : "-"}
+                      </Typography>
+                    </>
+                  )
+                ) : (
+                  // No record exists → show Update link (create new)
+                  <Link
+                    component="button"
+                    underline="hover"
+                    color="primary"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // open modal with defaults (month for this row)
+                      openUpdateForEmployee(emp, formattedMonth, s.actual_to_pay ?? s.net_takehome ?? 0, s.due_date ?? "");
+                    }}
+                  >
+                    Update
+                  </Link>
+                )}
+              </TableCell>
 
+              {/* Due Date column (for clarity) */}
+              <TableCell>
+                {dueDateValue ? dayjs(dueDateValue).format("DD-MMM-YYYY") : "-"}
+              </TableCell>
 
+              <TableCell>
+                {/* Pay button opens the same modal; if already paid can show View dialog instead */}
+                <Button
+                  variant="outlined"
+                  color={paidStatus === "Yes" ? "primary" : "success"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+
+                    if (paidStatus === "Yes") {
+                      // If already paid, open view dialog if you have one (preserve existing behavior)
+                      setSelectedSalary({
+                        ...s,
+                        ...(salaryRecord || {}),
+                      });
+                      setViewMonthlySalaryModal(true); // keep your existing view modal
+                    } else {
+                      // Open Update modal so user can enter actual_to_pay / due_date then Save or Pay
+                      openUpdateForEmployee(emp, formattedMonth, actualToPayValue, dueDateValue);
+                    }
+                  }}
+                >
+                  {paidStatus === "Yes" ? "View" : "Pay"}
+                </Button>
+              </TableCell>
+            </TableRow>
+          );
+        })}
+
+        {/* Fallback row if there are no pending salaries */}
+        {filteredSalaries.length === 0 && (
+          <TableRow>
+            <TableCell colSpan={8} align="center">
+              <Typography color="textSecondary" sx={{ py: 2 }}>
+                No pending salaries found for {dayjs(month, "YYYY-MM").format("MMMM YYYY")}
+              </Typography>
+            </TableCell>
+          </TableRow>
+        )}
+      </TableBody>
     </Table>
   </TableContainer>
 )}
+
 
 </div>
 

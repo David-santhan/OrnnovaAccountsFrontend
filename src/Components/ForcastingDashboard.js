@@ -43,6 +43,8 @@ const formatMonthLabel = (monthKey) => {
   }
 };
 
+
+
 /* Beautiful Section Table */
 const SectionTable = ({ title, columns = [], rows = [] }) => {
   if (!rows || rows.length === 0) return null;
@@ -143,7 +145,6 @@ export default function ForcastingDashboard() {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [error, setError] = useState(null);
 
-  
   const [fromMonth, setFromMonth] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 6);
@@ -162,7 +163,7 @@ export default function ForcastingDashboard() {
       const res = await axios.get("http://localhost:7760/forecast");
       const data = res.data || {};
       setFullData(data);
-
+      console.log(data);
       if (Array.isArray(data.months)) {
         const s = data.months
           .map((m) => ({
@@ -177,6 +178,7 @@ export default function ForcastingDashboard() {
 
         setSummary(s);
         setFiltered(s);
+        console.log(data);
       }
     } finally {
       setLoading(false);
@@ -200,6 +202,7 @@ export default function ForcastingDashboard() {
 
       const lastBalance = res.data.data?.[0]?.updated_balance || 0;
       setMonthlyAccBalance(lastBalance);
+      console.log(lastBalance);
 
       const out = summary.filter(
         (s) => s.month >= fromMonth && s.month <= toMonth
@@ -210,77 +213,232 @@ export default function ForcastingDashboard() {
       alert("Failed to fetch balance");
     }
   };
-  // Selected month details
+
+  // ---------- DEBUG: quick log to see month details when dialog opens ----------
+  useEffect(() => {
+    if (selectedMonth && fullData) {
+      const md = fullData.months?.find((m) => m.month === selectedMonth);
+      console.log("DEBUG monthDetails for", selectedMonth, md);
+    }
+  }, [selectedMonth, fullData]);
+
+  // <<< FIX: add monthDetails useMemo so mergedIncome/mergedExpenses can use it >>>
   const monthDetails = useMemo(() => {
-    if (!fullData || !selectedMonth) return null;
-    return fullData.months?.find((m) => m.month === selectedMonth) || null;
+    if (!fullData || !Array.isArray(fullData.months) || !selectedMonth) return null;
+    return fullData.months.find((m) => m.month === selectedMonth) || null;
   }, [fullData, selectedMonth]);
 
-  // Build merged income (ACTUAL + FORECAST)
-  const mergedIncome = useMemo(() => {
-    if (!monthDetails) return [];
-
-    const actual = monthDetails.actualIncomeItems || [];
-    const forecast = monthDetails.forecastIncomeItems || [];
-
-    return forecast.map((f) => {
-      const match = actual.find(
-        (a) =>
-          a.invoice_number === f.invoice_number ||
-          (a.project_id === f.project_id &&
-            Number(a.invoice_value) === Number(f.amount))
-      );
-
-      return {
-        ...f,
-        status: match ? "Received" : "Not Received",
-        received_date: match?.received_date || null,
-      };
-    });
-  }, [monthDetails]);
-
-  // Build merged EXPENSES (Actual + Forecast)
-const mergedExpenses = useMemo(() => {
-
+  // ---------- Build merged income (ACTUAL + FORECAST) ----------
+  // ---------- Build merged income (ACTUAL + FORECAST) ----------
+// ---------- Build merged income (ACTUAL + FORECAST) ----------
+const mergedIncome = useMemo(() => {
   if (!monthDetails) return [];
- 
-  const actual = monthDetails.actualExpenseItems || [];
 
-  const forecast = monthDetails.forecastExpenseItems || [];
- 
-  return forecast.map((f) => {
+  const actual = monthDetails.actualIncomeItems || [];
+  const forecast = monthDetails.forecastIncomeItems || [];
 
-    const match = actual.find(
-
-      (a) =>
-
-        (a.expense_type || "").trim().toLowerCase() ===
-
-        (f.type || "").trim().toLowerCase()
-
-    );
- 
-    return {
-
-      ...f,
-
-      regular: match ? match.regular : (f.regular || "No"),
-
-      paid_amount: match ? match.paid_amount : 0,
-
-      paid_date: match ? match.paid_date : null,
-
-      status: match ? "Paid" : "Not Paid",
-
-      actual_amount: match ? match.amount : 0,
-
-    };
-
+  // index actuals by id/number for fast lookup
+  const actualById = new Map();
+  const actualByNumber = new Map();
+  actual.forEach(a => {
+    if (a.invoice_id != null) actualById.set(String(a.invoice_id), a);
+    if (a.invoice_number) actualByNumber.set(String(a.invoice_number), a);
   });
 
+  const merged = [];
+
+  // 1) Start with forecast rows, mark Received if there's a matching actual
+  (forecast || []).forEach((f) => {
+    const match =
+      (f.invoice_id != null && actualById.get(String(f.invoice_id))) ||
+      (f.invoice_number && actualByNumber.get(String(f.invoice_number))) ||
+      actual.find(
+        (a) =>
+          a.project_id === f.project_id &&
+          Number(a.invoice_value || a.total_with_gst || 0) === Number(f.invoice_value || f.amount || 0)
+      );
+
+    merged.push({
+      // prefer forecast field names but keep both shapes available
+      invoice_id: f.invoice_id,
+      invoice_number: f.invoice_number,
+      project_id: f.project_id,
+      projectName: f.projectName || (f.project && f.project.projectName) || null,
+      invoice_value: f.invoice_value || f.amount || f.total_with_gst || 0,
+      total_with_gst: f.total_with_gst || f.invoice_value || f.amount || 0,
+      gst_amount: f.gst_amount || 0,
+      due_date: f.due_date || null,
+      received_date: match?.received_date || null,
+      status: match ? "Received" : "Not Received",
+      _source: match ? "actual+forecast" : "forecast-only",
+    });
+  });
+
+  // 2) Append any actual-only rows that were not represented above
+  (actual || []).forEach((a) => {
+    const exists =
+      merged.some(
+        (m) =>
+          (m.invoice_id != null && a.invoice_id != null && String(m.invoice_id) === String(a.invoice_id)) ||
+          (m.invoice_number && a.invoice_number && String(m.invoice_number) === String(a.invoice_number))
+      );
+
+    if (!exists) {
+      merged.push({
+        invoice_id: a.invoice_id,
+        invoice_number: a.invoice_number,
+        project_id: a.project_id,
+        projectName: a.projectName || null,
+        invoice_value: a.invoice_value || a.total_with_gst || 0,
+        total_with_gst: a.total_with_gst || a.invoice_value || 0,
+        gst_amount: a.gst_amount || 0,
+        due_date: a.due_date || null,
+        received_date: a.received_date || null,
+        status: "Received",
+        _source: "actual-only",
+      });
+    }
+  });
+
+  // Optional: sort Not Received first, then Received (you can remove if you prefer original order)
+  merged.sort((a, b) => {
+    if (a.status === b.status) {
+      // newer received_date first, otherwise by invoice_number
+      const da = a.received_date ? new Date(a.received_date) : new Date(0);
+      const db = b.received_date ? new Date(b.received_date) : new Date(0);
+      if (da - db !== 0) return db - da;
+      return String(a.invoice_number || "").localeCompare(String(b.invoice_number || ""));
+    }
+    return a.status === "Not Received" ? -1 : 1;
+  });
+
+  return merged;
 }, [monthDetails]);
 
- 
+  // ---------- Build merged EXPENSES (Actual + Forecast) ----------
+  // const mergedExpenses = useMemo(() => {
+  //   if (!monthDetails) return [];
+
+  //   const actual = monthDetails.actualExpenseItems || [];
+  //   const forecast = monthDetails.forecastExpenseItems || [];
+
+  //   return forecast.map((f) => {
+  //     // 1) try matching by expense_id (best)
+  //     let match =
+  //       (f.expense_id && actual.find((a) => a.expense_id === f.expense_id)) ||
+  //       // 2) try matching by paid_date / month heuristics (if expense ids absent)
+  //       actual.find((a) => {
+  //         const aType = (a.expense_type || "").trim().toLowerCase();
+  //         const fType = (f.type || "").trim().toLowerCase();
+  //         return aType === fType;
+  //       });
+
+  //     // Build merged record (prefer actual values where available)
+  //     return {
+  //       ...f,
+  //       // ensure we always expose regular/status/paid fields
+  //       regular: match?.regular ?? f.regular ?? "No",
+  //       paid_amount: match?.paid_amount ?? f.paid_amount ?? 0,
+  //       paid_date: match?.paid_date ?? f.paid_date ?? null,
+  //       status: match ? (match.status || "Paid") : (f.status || "Not Paid"),
+  //       // keep original forecast amount as `amount`, and actual amount (if any) as actual_amount
+  //       actual_amount: match?.amount ?? match?.paid_amount ?? 0,
+  //     };
+  //   });
+  // }, [monthDetails]);
+// ---------- Build merged EXPENSES (Actual + Forecast) ----------
+const mergedExpenses = useMemo(() => {
+  if (!monthDetails) return [];
+
+  const actual = monthDetails.actualExpenseItems || [];      // actual paid rows (from backend)
+  const forecast = monthDetails.forecastExpenseItems || [];  // forecast / expected rows (from backend)
+
+  // map actual payments by expense_id for quick lookup
+  const actualById = new Map();
+  actual.forEach(a => {
+    if (a.expense_id != null) actualById.set(String(a.expense_id), a);
+  });
+
+  // also index actual rows by type+amount as a fallback (helps when expense_id not present)
+  const actualByTypeAmount = {};
+  actual.forEach(a => {
+    const key = `${String(a.expense_type || a.type || "").trim().toLowerCase()}|${Number(a.amount || a.paid_amount || 0)}`;
+    (actualByTypeAmount[key] ||= []).push(a);
+  });
+
+  const merged = [];
+
+  // 1) Add ALL forecast rows (no collapsing). If there's a matching actual by id -> merge paid info
+  forecast.forEach(f => {
+    const fid = f.expense_id != null ? String(f.expense_id) : null;
+
+    // try expense_id match
+    let match = fid ? actualById.get(fid) : undefined;
+
+    // fallback: try by type+amount (some actual rows may lack expense_id)
+    if (!match) {
+      const key = `${String(f.type || "").trim().toLowerCase()}|${Number(f.amount || f.paid_amount || 0)}`;
+      const list = actualByTypeAmount[key] || [];
+      match = list.length ? list[0] : undefined;
+    }
+
+    // Decide paid_amount and paid_date sensibly: prefer actual values, else keep forecast (if any)
+    const paidAmount = match?.paid_amount ?? match?.amount ?? f.paid_amount ?? 0;
+    let paidDate = match?.paid_date ?? f.paid_date ?? null;
+    // if paid_date missing but a month reference exists on actual, use a month-year fallback (not a real date)
+    if (!paidDate && match?.month_year) {
+      // store as ISO-like day for display (frontend formatting will show only date part)
+      paidDate = `${String(match.month_year).slice(0,7)}-01`;
+    }
+    // status: if actual shows paid_amount > 0 or match.status indicates paid, mark Paid
+    const statusFromMatch = match?.status ? String(match.status).trim().toLowerCase() : null;
+    const status = (paidAmount && Number(paidAmount) > 0) || statusFromMatch === "paid" || statusFromMatch === "yes"
+      ? "Paid"
+      : (f.status || "Not Paid");
+
+    merged.push({
+      expense_id: f.expense_id,
+      type: f.type,
+      description: f.description,
+      regular: f.regular ?? f.regular ?? "No",
+      amount: Number(f.amount ?? f.paid_amount ?? 0),
+      paid_amount: Number(paidAmount || 0),
+      paid_date: paidDate ?? null,
+      status,
+      actual_amount: match ? (match.amount ?? match.paid_amount ?? 0) : 0,
+      _source: match ? "forecast+actual" : "forecast-only",
+    });
+  });
+
+  // 2) Append any actual-only rows that were not in forecast (show them too)
+  actual.forEach(a => {
+    const exists = merged.some(m =>
+      m.expense_id != null && a.expense_id != null && String(m.expense_id) === String(a.expense_id)
+    );
+
+    if (!exists) {
+      // normalize paid_date similarly
+      let paidDate = a.paid_date ?? null;
+      if (!paidDate && a.month_year) paidDate = `${String(a.month_year).slice(0,7)}-01`;
+
+      merged.push({
+        expense_id: a.expense_id,
+        type: a.expense_type || a.type || "Other",
+        description: a.description,
+        regular: a.regular ?? "No",
+        amount: Number(a.amount ?? a.paid_amount ?? 0),
+        paid_amount: Number(a.paid_amount ?? a.actual_amount ?? 0),
+        paid_date: paidDate,
+        status: a.status ?? (Number(a.paid_amount ?? a.amount ?? 0) > 0 ? "Paid" : "Not Paid"),
+        actual_amount: Number(a.amount ?? a.paid_amount ?? 0),
+        _source: "actual-only",
+      });
+    }
+  });
+
+  // preserve order: keep forecast order first, actual-only appended — this matches your backend grouping
+  return merged;
+}, [monthDetails]);
 
   // CATEGORY DETECTION (Salary, PF, TDS, PT, Insurance)
   const MAIN = ["Salary", "PF", "Insurance", "PT", "TDS"];
@@ -296,35 +454,23 @@ const mergedExpenses = useMemo(() => {
   };
 
   // Build Category Totals
-const { categoryTotals, grandTotalExpenses } = useMemo(() => {
+  const { categoryTotals, grandTotalExpenses } = useMemo(() => {
+    const totals = {};
 
-  const totals = {};
- 
-  mergedExpenses.forEach((exp) => {
+    mergedExpenses.forEach((exp) => {
+      const cat = getCategory(exp.type);
+      if (!totals[cat]) totals[cat] = 0;
 
-    const cat = getCategory(exp.type);
- 
-    if (!totals[cat]) totals[cat] = 0;
- 
-    // Use actual amount if available, otherwise forecast
+      // Use actual amount if available, otherwise forecast
+      const finalAmount = exp.actual_amount ? exp.actual_amount : exp.amount;
+      totals[cat] += Number(finalAmount || 0);
+    });
 
-    const finalAmount = exp.actual_amount ? exp.actual_amount : exp.amount;
- 
-    totals[cat] += Number(finalAmount || 0);
-
-  });
- 
-  return {
-
-    categoryTotals: totals,
-
-    grandTotalExpenses: Object.values(totals).reduce((a, b) => a + b, 0),
-
-  };
-
-}, [mergedExpenses]);
-
- 
+    return {
+      categoryTotals: totals,
+      grandTotalExpenses: Object.values(totals).reduce((a, b) => a + b, 0),
+    };
+  }, [mergedExpenses]);
 
   // Acc Balance Calculation
   const safeNumber = (v) => Number(v || 0);
@@ -487,7 +633,9 @@ const { categoryTotals, grandTotalExpenses } = useMemo(() => {
                     }}
                     onClick={() => {
                       setSelectedMonth(row.month);
-                      setDialogOpen(true);
+                      // make sure monthDetails reacts to selectedMonth before rendering dialog content
+                      // this micro-task scheduling avoids a single-render race where monthDetails is still null
+                      setTimeout(() => setDialogOpen(true), 0);
                     }}
                   >
                     View
@@ -527,34 +675,40 @@ const { categoryTotals, grandTotalExpenses } = useMemo(() => {
               {/* =======================
                  INCOME OVERVIEW TABLE
               ======================== */}
-              <SectionTable
-                title="Income Overview (Actual + Forecast)"
-                columns={[
-                  { header: "Project", render: (r) => r.projectName || r.project_id },
-                  { header: "Invoice No", render: (r) => r.invoice_number },
-                  { header: "Value (₹)", render: (r) => currency(r.invoice_value || r.amount) },
-                  { header: "GST (₹)", render: (r) => currency(r.gst_amount) },
-                  {
-                    header: "Date",
-                    render: (r) =>
-                      r.received_date
-                        ? new Date(r.received_date).toLocaleDateString("en-GB")
-                        : r.due_date
-                        ? new Date(r.due_date).toLocaleDateString("en-GB")
-                        : "-",
-                  },
-                  {
-                    header: "Status",
-                    render: (r) =>
-                      r.status === "Received" ? (
-                        <span style={{ color: "green", fontWeight: 700 }}>✔ Received</span>
-                      ) : (
-                        <span style={{ color: "red", fontWeight: 700 }}>✖ Not Received</span>
-                      ),
-                  },
-                ]}
-                rows={mergedIncome}
-              />
+              {/* =======================
+   INCOME OVERVIEW (Single table: Not Received + Received)
+======================== */}
+<SectionTable
+  title={`Income — ${formatMonthLabel(selectedMonth)}`}
+  columns={[
+    { header: "Project", render: (r) => r.projectName || r.project_id || "-" },
+    { header: "Invoice No", render: (r) => r.invoice_number || "-" },
+    { header: "Value (₹)", render: (r) => currency(r.invoice_value || r.amount || r.total_with_gst) },
+    { header: "GST (₹)", render: (r) => currency(r.gst_amount || 0) },
+    {
+      header: "Received Date",
+      render: (r) =>
+        r.status === "Received"
+          ? r.received_date
+            ? new Date(r.received_date).toLocaleDateString("en-GB")
+            : "-"
+          : r.due_date
+          ? new Date(r.due_date).toLocaleDateString("en-GB")
+          : "-",
+    },
+    {
+      header: "Status",
+      render: (r) =>
+        r.status === "Received" ? (
+          <span style={{ color: "green", fontWeight: 700 }}>✔ Received</span>
+        ) : (
+          <span style={{ color: "orange", fontWeight: 700 }}>⏳ Not Received</span>
+        ),
+    },
+  ]}
+  rows={mergedIncome}
+/>
+
 
               {/* =======================
                   EXPENSES OVERVIEW SECTION
