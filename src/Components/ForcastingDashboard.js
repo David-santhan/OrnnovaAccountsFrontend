@@ -18,6 +18,7 @@ import {
   TextField,
   Typography,
   IconButton,
+  Divider,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import CloseIcon from "@mui/icons-material/Close";
@@ -603,57 +604,142 @@ const { categoryTotals, grandTotalExpenses } = useMemo(() => {
     >
       {/* Received */}
       <Box
-        sx={{
-          p: 1.2,
-          borderRadius: 1.5,
-          bgcolor: "#e8f5e9",
-          textAlign: "center",
-        }}
-      >
-        <h5 style={{ margin: 0, color: "green", fontSize: "13px" }}>✔ Received</h5>
-        <div style={{ fontSize: "14px", fontWeight: 700 }}>
-          {incomeSummary.receivedCount} invoices
-        </div>
-        <div style={{ fontSize: "13px", marginTop: "3px" }}>
+  sx={{
+    p: 1.2,
+    borderRadius: 1.5,
+    bgcolor: "#e8f5e9",
+    textAlign: "center",
+  }}
+>
+  <h5 style={{ margin: 0, color: "green", fontSize: "13px", marginBottom: "4px" }}>
+    ✔ Received
+  </h5>
+
+  <table
+    style={{
+      width: "100%",
+      fontSize: "12px",
+      borderCollapse: "collapse",
+    }}
+  >
+    <tbody>
+      <tr>
+        <td style={{ textAlign: "left", padding: "2px 4px" }}>Count</td>
+        <td style={{ textAlign: "right", fontWeight: 700 }}>
+          {incomeSummary.receivedCount}
+        </td>
+      </tr>
+
+      <tr>
+        <td style={{ textAlign: "left", padding: "2px 4px" }}>Amount</td>
+        <td style={{ textAlign: "right", fontWeight: 700 }}>
           {currency(incomeSummary.totalReceivedValue)}
-        </div>
-      </Box>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</Box>
+
 
       {/* Not Received */}
-      <Box
-        sx={{
-          p: 1.2,
-          borderRadius: 1.5,
-          bgcolor: "#ffebee",
-          textAlign: "center",
-        }}
-      >
-        <h5 style={{ margin: 0, color: "red", fontSize: "13px" }}>✖ Not Received</h5>
-        <div style={{ fontSize: "14px", fontWeight: 700 }}>
-          {incomeSummary.notReceivedCount} invoices
-        </div>
-        <div style={{ fontSize: "13px", marginTop: "3px" }}>
+    <Box
+  sx={{
+    p: 1.2,
+    borderRadius: 1.5,
+    bgcolor: "#ffebee",
+    textAlign: "center",
+  }}
+>
+  <h5 style={{ margin: 0, color: "red", fontSize: "13px", marginBottom: "4px" }}>
+    ✖ Not Received
+  </h5>
+
+  <table
+    style={{
+      width: "100%",
+      fontSize: "12px",
+      borderCollapse: "collapse",
+    }}
+  >
+    <tbody>
+      <tr>
+        <td style={{ textAlign: "left", padding: "2px 4px" }}>Count</td>
+        <td style={{ textAlign: "right", fontWeight: 700 }}>
+          {incomeSummary.notReceivedCount}
+        </td>
+      </tr>
+
+      <tr>
+        <td style={{ textAlign: "left", padding: "2px 4px" }}>Amount</td>
+        <td style={{ textAlign: "right", fontWeight: 700 }}>
           {currency(incomeSummary.totalNotReceivedValue)}
-        </div>
-      </Box>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</Box>
+
 
       {/* Total */}
-      <Box
-        sx={{
-          p: 1.2,
-          borderRadius: 1.5,
-          bgcolor: "#e3f2fd",
-          textAlign: "center",
-        }}
-      >
-        <h5 style={{ margin: 0, fontSize: "13px" }}>Total Value</h5>
-        <div style={{ fontSize: "14px", fontWeight: 700 }}>
+     <Box
+  sx={{
+    p: 1.2,
+    borderRadius: 1.5,
+    bgcolor: "#e3f2fd",
+    textAlign: "center",
+  }}
+>
+  <h5 style={{ margin: 0, fontSize: "13px", marginBottom: "4px" }}>Total Value</h5>
+
+  <table
+    style={{
+      width: "100%",
+      fontSize: "12px",
+      borderCollapse: "collapse",
+      marginTop: "4px",
+    }}
+  >
+    <tbody>
+      <tr>
+        <td style={{ textAlign: "left", padding: "2px 4px" }}>Total</td>
+        <td style={{ textAlign: "right", fontWeight: 600 }}>
           {currency(incomeSummary.totalValue)}
-        </div>
-        <div style={{ fontSize: "13px", marginTop: "3px" }}>
-          GST: {currency(incomeSummary.totalGST)}
-        </div>
-      </Box>
+        </td>
+      </tr>
+
+      <tr>
+        <td style={{ textAlign: "left", padding: "2px 4px" }}>GST</td>
+        <td style={{ textAlign: "right", fontWeight: 600 }}>
+         - {currency(incomeSummary.totalGST)}
+        </td>
+      </tr>
+
+      <tr>
+        <td
+          style={{
+            textAlign: "left",
+            padding: "2px 4px",
+            fontWeight: 700,
+            borderTop: "1px solid #c3d5f5",
+          }}
+        >
+          Final
+        </td>
+        <td
+          style={{
+            textAlign: "right",
+            fontWeight: 700,
+            borderTop: "1px solid #c3d5f5",
+          }}
+        >
+          {currency(incomeSummary.totalValue - incomeSummary.totalGST)}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</Box>
+
+
     </Box>
   )}
 </Box>
@@ -695,71 +781,129 @@ const { categoryTotals, grandTotalExpenses } = useMemo(() => {
                 rows={mergedIncome}
               />
 
+<Divider>Expenses</Divider>
               {/* =======================
                   EXPENSES OVERVIEW SECTION
               ======================== */}
              <Box sx={{ width: "50%" }}>
   {expenseSummary && (
-    <Box
-      sx={{
-        display: "grid",
-        gridTemplateColumns: "repeat(3, 1fr)",
-        gap: 1.5,
-        mb: 2,
-        mt: 2,
+   <Box
+  sx={{
+    display: "grid",
+    gridTemplateColumns: "repeat(3, 1fr)",
+    gap: 1.5,
+    mb: 2,
+    mt: 2,
+  }}
+>
+  {/* PAID */}
+  <Box
+    sx={{
+      p: 1.2,
+      borderRadius: 1.5,
+      bgcolor: "#e8f5e9",
+      textAlign: "center",
+    }}
+  >
+    <h5 style={{ margin: 0, color: "green", fontSize: "13px", marginBottom: "4px" }}>
+      ✔ Paid
+    </h5>
+
+    <table
+      style={{
+        width: "100%",
+        fontSize: "12px",
+        borderCollapse: "collapse",
       }}
     >
-      {/* PAID */}
-      <Box
-        sx={{
-          p: 1.2,
-          borderRadius: 1.5,
-          bgcolor: "#e8f5e9",
-          textAlign: "center",
-        }}
-      >
-        <h5 style={{ margin: 0, color: "green", fontSize: "13px" }}>✔ Paid</h5>
-        <div style={{ fontSize: "14px", fontWeight: 700 }}>
-          {expenseSummary.paidCount} items
-        </div>
-        <div style={{ fontSize: "13px", marginTop: "3px" }}>
-          {currency(expenseSummary.totalPaidAmount)}
-        </div>
-      </Box>
+      <tbody>
+        <tr>
+          <td style={{ textAlign: "left", padding: "2px 4px" }}>Count</td>
+          <td style={{ textAlign: "right", fontWeight: 700 }}>
+            {expenseSummary.paidCount}
+          </td>
+        </tr>
 
-      {/* NOT PAID */}
-      <Box
-        sx={{
-          p: 1.2,
-          borderRadius: 1.5,
-          bgcolor: "#ffebee",
-          textAlign: "center",
-        }}
-      >
-        <h5 style={{ margin: 0, color: "red", fontSize: "13px" }}>✖ Not Paid</h5>
-        <div style={{ fontSize: "14px", fontWeight: 700 }}>
-          {expenseSummary.notPaidCount} items
-        </div>
-        <div style={{ fontSize: "13px", marginTop: "3px" }}>
-          {currency(expenseSummary.totalNotPaidAmount)}
-        </div>
-      </Box>
+        <tr>
+          <td style={{ textAlign: "left", padding: "2px 4px" }}>Amount</td>
+          <td style={{ textAlign: "right", fontWeight: 700 }}>
+            {currency(expenseSummary.totalPaidAmount)}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </Box>
 
-      {/* TOTAL */}
-      <Box
-        sx={{
-          p: 1.2,
-          borderRadius: 1.5,
-          bgcolor: "#e3f2fd",
-          textAlign: "center",
-        }}
-      >
-        <h5 style={{ margin: 0, fontSize: "13px" }}>Total Expenses</h5>
-        <div style={{ fontSize: "14px", fontWeight: 700 }}>
-          {currency(expenseSummary.totalExpense)}
-        </div>
-      </Box>
-    </Box>
+  {/* NOT PAID */}
+  <Box
+    sx={{
+      p: 1.2,
+      borderRadius: 1.5,
+      bgcolor: "#ffebee",
+      textAlign: "center",
+    }}
+  >
+    <h5 style={{ margin: 0, color: "red", fontSize: "13px", marginBottom: "4px" }}>
+      ✖ Not Paid
+    </h5>
+
+    <table
+      style={{
+        width: "100%",
+        fontSize: "12px",
+        borderCollapse: "collapse",
+      }}
+    >
+      <tbody>
+        <tr>
+          <td style={{ textAlign: "left", padding: "2px 4px" }}>Count</td>
+          <td style={{ textAlign: "right", fontWeight: 700 }}>
+            {expenseSummary.notPaidCount}
+          </td>
+        </tr>
+
+        <tr>
+          <td style={{ textAlign: "left", padding: "2px 4px" }}>Amount</td>
+          <td style={{ textAlign: "right", fontWeight: 700 }}>
+            {currency(expenseSummary.totalNotPaidAmount)}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </Box>
+
+  {/* TOTAL EXPENSE */}
+  <Box
+    sx={{
+      p: 1.2,
+      borderRadius: 1.5,
+      bgcolor: "#e3f2fd",
+      textAlign: "center",
+    }}
+  >
+    <h5 style={{ margin: 0, fontSize: "13px", marginBottom: "4px" }}>
+      Total Expenses
+    </h5>
+
+    <table
+      style={{
+        width: "100%",
+        fontSize: "12px",
+        borderCollapse: "collapse",
+      }}
+    >
+      <tbody>
+        <tr>
+          <td style={{ textAlign: "left", padding: "2px 4px" }}>Total</td>
+          <td style={{ textAlign: "right", fontWeight: 700 }}>
+            {currency(expenseSummary.totalExpense)}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </Box>
+</Box>
+
   )}
 </Box>
 
