@@ -161,7 +161,6 @@ export default function ForcastingDashboard() {
       const res = await axios.get("http://localhost:7760/forecast");
       const data = res.data || {};
       setFullData(data);
-
       if (Array.isArray(data.months)) {
         const s = data.months
           .map((m) => ({
@@ -184,6 +183,7 @@ export default function ForcastingDashboard() {
 
   useEffect(() => {
     fetchForecast();
+   
   }, []);
 
   const handleSearch = async () => {
@@ -237,6 +237,43 @@ export default function ForcastingDashboard() {
       };
     });
   }, [monthDetails]);
+
+  const incomeSummary = useMemo(() => {
+  if (!mergedIncome) return null;
+
+  let receivedCount = 0;
+  let notReceivedCount = 0;
+
+  let totalValue = 0;
+  let totalReceivedValue = 0;
+  let totalNotReceivedValue = 0;
+  let totalGST = 0;
+
+  mergedIncome.forEach((r) => {
+    const value = Number(r.invoice_value || r.amount || 0);
+    const gst = Number(r.gst_amount || 0);
+
+    totalValue += value;
+    totalGST += gst;
+
+    if (r.status === "Received") {
+      receivedCount++;
+      totalReceivedValue += value;
+    } else {
+      notReceivedCount++;
+      totalNotReceivedValue += value;
+    }
+  });
+
+  return {
+    receivedCount,
+    notReceivedCount,
+    totalValue,
+    totalReceivedValue,
+    totalNotReceivedValue,
+    totalGST,
+  };
+}, [mergedIncome]);
 
   // Build merged EXPENSES (Actual + Forecast)
 const mergedExpenses = useMemo(() => {
@@ -323,7 +360,39 @@ const { categoryTotals, grandTotalExpenses } = useMemo(() => {
 
 }, [mergedExpenses]);
 
- 
+ const expenseSummary = useMemo(() => {
+  if (!mergedExpenses) return null;
+
+  let paidCount = 0;
+  let notPaidCount = 0;
+
+  let totalExpense = 0;
+  let totalPaidAmount = 0;
+  let totalNotPaidAmount = 0;
+
+  mergedExpenses.forEach((exp) => {
+    const amount = Number(exp.amount || 0);
+
+    totalExpense += amount;
+
+    if (exp.status === "Paid") {
+      paidCount++;
+      totalPaidAmount += amount;
+    } else {
+      notPaidCount++;
+      totalNotPaidAmount += amount;
+    }
+  });
+
+  return {
+    paidCount,
+    notPaidCount,
+    totalExpense,
+    totalPaidAmount,
+    totalNotPaidAmount,
+  };
+}, [mergedExpenses]);
+
 
   // Acc Balance Calculation
   const safeNumber = (v) => Number(v || 0);
@@ -521,6 +590,77 @@ const { categoryTotals, grandTotalExpenses } = useMemo(() => {
         </DialogTitle>
 
         <DialogContent dividers>
+             {/* Summary Top Box */}
+  <Box sx={{ width: "50%" }}>
+  {incomeSummary && (
+    <Box
+      sx={{
+        display: "grid",
+        gridTemplateColumns: "repeat(3, 1fr)",
+        gap: 1.5,
+        mb: 2,
+      }}
+    >
+      {/* Received */}
+      <Box
+        sx={{
+          p: 1.2,
+          borderRadius: 1.5,
+          bgcolor: "#e8f5e9",
+          textAlign: "center",
+        }}
+      >
+        <h5 style={{ margin: 0, color: "green", fontSize: "13px" }}>✔ Received</h5>
+        <div style={{ fontSize: "14px", fontWeight: 700 }}>
+          {incomeSummary.receivedCount} invoices
+        </div>
+        <div style={{ fontSize: "13px", marginTop: "3px" }}>
+          {currency(incomeSummary.totalReceivedValue)}
+        </div>
+      </Box>
+
+      {/* Not Received */}
+      <Box
+        sx={{
+          p: 1.2,
+          borderRadius: 1.5,
+          bgcolor: "#ffebee",
+          textAlign: "center",
+        }}
+      >
+        <h5 style={{ margin: 0, color: "red", fontSize: "13px" }}>✖ Not Received</h5>
+        <div style={{ fontSize: "14px", fontWeight: 700 }}>
+          {incomeSummary.notReceivedCount} invoices
+        </div>
+        <div style={{ fontSize: "13px", marginTop: "3px" }}>
+          {currency(incomeSummary.totalNotReceivedValue)}
+        </div>
+      </Box>
+
+      {/* Total */}
+      <Box
+        sx={{
+          p: 1.2,
+          borderRadius: 1.5,
+          bgcolor: "#e3f2fd",
+          textAlign: "center",
+        }}
+      >
+        <h5 style={{ margin: 0, fontSize: "13px" }}>Total Value</h5>
+        <div style={{ fontSize: "14px", fontWeight: 700 }}>
+          {currency(incomeSummary.totalValue)}
+        </div>
+        <div style={{ fontSize: "13px", marginTop: "3px" }}>
+          GST: {currency(incomeSummary.totalGST)}
+        </div>
+      </Box>
+    </Box>
+  )}
+</Box>
+
+
+
+
           {monthDetails && (
             <>
               {/* =======================
@@ -558,6 +698,72 @@ const { categoryTotals, grandTotalExpenses } = useMemo(() => {
               {/* =======================
                   EXPENSES OVERVIEW SECTION
               ======================== */}
+             <Box sx={{ width: "50%" }}>
+  {expenseSummary && (
+    <Box
+      sx={{
+        display: "grid",
+        gridTemplateColumns: "repeat(3, 1fr)",
+        gap: 1.5,
+        mb: 2,
+        mt: 2,
+      }}
+    >
+      {/* PAID */}
+      <Box
+        sx={{
+          p: 1.2,
+          borderRadius: 1.5,
+          bgcolor: "#e8f5e9",
+          textAlign: "center",
+        }}
+      >
+        <h5 style={{ margin: 0, color: "green", fontSize: "13px" }}>✔ Paid</h5>
+        <div style={{ fontSize: "14px", fontWeight: 700 }}>
+          {expenseSummary.paidCount} items
+        </div>
+        <div style={{ fontSize: "13px", marginTop: "3px" }}>
+          {currency(expenseSummary.totalPaidAmount)}
+        </div>
+      </Box>
+
+      {/* NOT PAID */}
+      <Box
+        sx={{
+          p: 1.2,
+          borderRadius: 1.5,
+          bgcolor: "#ffebee",
+          textAlign: "center",
+        }}
+      >
+        <h5 style={{ margin: 0, color: "red", fontSize: "13px" }}>✖ Not Paid</h5>
+        <div style={{ fontSize: "14px", fontWeight: 700 }}>
+          {expenseSummary.notPaidCount} items
+        </div>
+        <div style={{ fontSize: "13px", marginTop: "3px" }}>
+          {currency(expenseSummary.totalNotPaidAmount)}
+        </div>
+      </Box>
+
+      {/* TOTAL */}
+      <Box
+        sx={{
+          p: 1.2,
+          borderRadius: 1.5,
+          bgcolor: "#e3f2fd",
+          textAlign: "center",
+        }}
+      >
+        <h5 style={{ margin: 0, fontSize: "13px" }}>Total Expenses</h5>
+        <div style={{ fontSize: "14px", fontWeight: 700 }}>
+          {currency(expenseSummary.totalExpense)}
+        </div>
+      </Box>
+    </Box>
+  )}
+</Box>
+
+
               <div style={{ display: "flex", gap: "20px", marginTop: "30px" }}>
 
                 {/* LEFT — CATEGORY TOTALS */}
@@ -677,7 +883,8 @@ const { categoryTotals, grandTotalExpenses } = useMemo(() => {
                           <TableCell>Regular</TableCell>
                           <TableCell>Type</TableCell>
                           <TableCell>Amount</TableCell>
-                          <TableCell>Paid Amount</TableCell>
+                          {/* <TableCell>Paid Amount</TableCell> */}
+                          <TableCell>Due Date</TableCell>
                           <TableCell>Status</TableCell>
                           <TableCell>Paid Date</TableCell>
                         </TableRow>
@@ -720,8 +927,8 @@ const { categoryTotals, grandTotalExpenses } = useMemo(() => {
 
                               <TableCell>{currency(exp.amount)}</TableCell>
 
-                              <TableCell>{currency(exp.paid_amount)}</TableCell>
-
+                              {/* <TableCell>{currency(exp.paid_amount)}</TableCell> */}
+                              <TableCell>{currency(exp.due_date)}</TableCell>
                               <TableCell
                                 style={{
                                   fontWeight: 700,
