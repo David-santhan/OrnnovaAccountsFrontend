@@ -220,7 +220,7 @@ const [expenseStatusFilter, setExpenseStatusFilter] = useState("All");
 
         setSummary(s);
         setFiltered(s);
-        // console.log(data);
+        console.log(data);
       }
     } catch (err) {
       console.error("fetchForecast error", err);
@@ -246,11 +246,12 @@ const [expenseStatusFilter, setExpenseStatusFilter] = useState("All");
 
       const lastBalance = res.data.data?.[0]?.updated_balance || 0;
       setMonthlyAccBalance(lastBalance);
-
+      
       const out = summary.filter(
         (s) => s.month >= fromMonth && s.month <= toMonth
       );
       setFiltered(out);
+      console.log(filtered);
     } catch (err) {
       console.error(err);
       alert("Failed to fetch balance");
@@ -365,90 +366,91 @@ const mergedIncome = useMemo(() => {
   }, [mergedIncome]);
 
   // ---------- Build merged EXPENSES (Actual + Forecast) ----------
-  const mergedExpenses = useMemo(() => {
-    if (!monthDetails) return [];
+const mergedExpenses = useMemo(() => {
+  if (!monthDetails) return [];
 
-    const actual = monthDetails.actualExpenseItems || [];      // actual paid rows (from backend)
-    const forecast = monthDetails.forecastExpenseItems || [];  // forecast / expected rows (from backend)
+  const actual = monthDetails.actualExpenseItems || [];
+  const forecast = monthDetails.forecastExpenseItems || [];
 
-    const actualById = new Map();
-    actual.forEach(a => {
-      if (a.expense_id != null) actualById.set(String(a.expense_id), a);
-    });
+  // STEP 1 — Normalize formats
+  const normalize = (date) => {
+    if (!date) return null;
+    try {
+      return date.slice(0, 10); // YYYY-MM-DD
+    } catch {
+      return null;
+    }
+  };
 
-    const actualByTypeAmount = {};
-    actual.forEach(a => {
-      const key = `${String(a.expense_type || a.type || "").trim().toLowerCase()}|${Number(a.amount || a.paid_amount || 0)}`;
-      (actualByTypeAmount[key] ||= []).push(a);
-    });
+  // STEP 2 — Create Paid Map: (expenseId + month)
+  const paidMap = {};
+  actual.forEach(item => {
+    const paidDate = normalize(item.paid_date);
+    if (!paidDate) return;
 
-    const merged = [];
+    const paidMonth = paidDate.slice(0, 7); // YYYY-MM
+    const key = `${item.expense_id}_${paidMonth}`;
 
-    // 1) Add forecast rows, merge with actual when found
-    forecast.forEach(f => {
-      const fid = f.expense_id != null ? String(f.expense_id) : null;
-      let match = fid ? actualById.get(fid) : undefined;
+    paidMap[key] = {
+      paid_amount: item.paid_amount,
+      paid_date: item.paid_date,
+      status: "Paid",
+    };
+  });
 
-      if (!match) {
-        const key = `${String(f.type || "").trim().toLowerCase()}|${Number(f.amount || f.paid_amount || 0)}`;
-        const list = actualByTypeAmount[key] || [];
-        match = list.length ? list[0] : undefined;
-      }
+  // STEP 3 — Merge with forecast
+  return forecast.map(f => {
+    const effDate = normalize(f.effective_due_date);
+    const forecastMonth = effDate ? effDate.slice(0, 7) : "";
 
-      const paidAmount = match?.paid_amount ?? match?.amount ?? f.paid_amount ?? 0;
-      let paidDate = match?.paid_date ?? f.paid_date ?? null;
-      if (!paidDate && match?.month_year) {
-        paidDate = `${String(match.month_year).slice(0,7)}-01`;
-      }
+    const key = `${f.expense_id}_${forecastMonth}`;
+    const paid = paidMap[key];
 
-      const statusFromMatch = match?.status ? String(match.status).trim().toLowerCase() : null;
-      const status = (paidAmount && Number(paidAmount) > 0) || statusFromMatch === "paid" || statusFromMatch === "yes"
-        ? "Paid"
-        : (f.status || "Not Paid");
+    if (paid) {
+      console.log("MATCH FOUND:", key, paid);
+      return {
+        ...f,
+        status: "Paid",
+        paid_amount: paid.paid_amount,
+        paid_date: paid.paid_date,
+      };
+    }
+console.log("🎯 DEBUG START ------------------");
 
-      merged.push({
-        expense_id: f.expense_id,
-        type: f.type,
-        description: f.description,
-        regular: f.regular ?? "No",
-        amount: Number(f.amount ?? f.paid_amount ?? 0),
-        paid_amount: Number(paidAmount || 0),
-        paid_date: paidDate ?? null,
-        status,
-        actual_amount: match ? (match.amount ?? match.paid_amount ?? 0) : 0,
-        _source: match ? "forecast+actual" : "forecast-only",
-        due_date: f.due_date ?? null,
-      });
-    });
+console.log("FORECAST ITEMS:");
+forecast.forEach(f => {
+  console.log({
+    expense_id: f.expense_id,
+    effective_due_date: f.effective_due_date,
+    forecast_month: f.effective_due_date?.slice(0, 7)
+  });
+});
 
-    // 2) Append actual-only rows that were not in forecast
-    actual.forEach(a => {
-      const exists = merged.some(m =>
-        m.expense_id != null && a.expense_id != null && String(m.expense_id) === String(a.expense_id)
-      );
+console.log("ACTUAL PAID ITEMS:");
+actual.forEach(a => {
+  console.log({
+    expense_id: a.expense_id,
+    paid_date: a.paid_date,
+    paid_month: a.paid_date?.slice(0, 7),
+    paid_amount: a.paid_amount,
+    status: a.status
+  });
+});
 
-      if (!exists) {
-        let paidDate = a.paid_date ?? null;
-        if (!paidDate && a.month_year) paidDate = `${String(a.month_year).slice(0,7)}-01`;
+console.log("🎯 DEBUG END ------------------");
 
-        merged.push({
-          expense_id: a.expense_id,
-          type: a.expense_type || a.type || "Other",
-          description: a.description,
-          regular: a.regular ?? "No",
-          amount: Number(a.amount ?? a.paid_amount ?? 0),
-          paid_amount: Number(a.paid_amount ?? a.actual_amount ?? 0),
-          paid_date: paidDate,
-          status: a.status ?? (Number(a.paid_amount ?? a.amount ?? 0) > 0 ? "Paid" : "Not Paid"),
-          actual_amount: Number(a.amount ?? a.paid_amount ?? 0),
-          _source: "actual-only",
-          due_date: a.due_date ?? null,
-        });
-      }
-    });
+    return {
+      ...f,
+      status: "Unpaid",
+      paid_amount: 0,
+      paid_date: null,
+    };
+  });
+}, [monthDetails]);
 
-    return merged;
-  }, [monthDetails]);
+
+
+
 
   // CATEGORY DETECTION (Salary, PF, TDS, PT, Insurance)
   const MAIN = ["Salary", "PF", "Insurance", "PT", "TDS"];
