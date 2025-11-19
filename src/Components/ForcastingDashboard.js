@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
+
 import {
   Box,
   Button,
-  CircularProgress,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -20,8 +20,20 @@ import {
   IconButton,
   Divider,
 } from "@mui/material";
+
 import SearchIcon from "@mui/icons-material/Search";
 import CloseIcon from "@mui/icons-material/Close";
+import "dayjs/locale/en-gb";
+
+// Date Pickers (must be at top)
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+
+// DayJS
+import dayjs from "dayjs";
+import localizedFormat from "dayjs/plugin/localizedFormat";
+dayjs.extend(localizedFormat);
 
 // Currency Formatter
 const currency = (n) =>
@@ -143,6 +155,14 @@ export default function ForcastingDashboard() {
   const [monthlyAccBalance, setMonthlyAccBalance] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [error, setError] = useState(null);
+const [appliedStart, setAppliedStart] = useState(null);
+const [appliedEnd, setAppliedEnd] = useState(null);
+const [incomeStatusFilter, setIncomeStatusFilter] = useState("All");
+const [expenseStatusFilter, setExpenseStatusFilter] = useState("All");
+
+  // Date range state for dialog filter (two DatePickers)
+  const [rangeStart, setRangeStart] = useState(null); // dayjs
+  const [rangeEnd, setRangeEnd] = useState(null); // dayjs
 
   const [fromMonth, setFromMonth] = useState(() => {
     const d = new Date();
@@ -176,8 +196,10 @@ export default function ForcastingDashboard() {
 
         setSummary(s);
         setFiltered(s);
-        console.log(data);
+        // console.log(data);
       }
+    } catch (err) {
+      console.error("fetchForecast error", err);
     } finally {
       setLoading(false);
     }
@@ -200,7 +222,6 @@ export default function ForcastingDashboard() {
 
       const lastBalance = res.data.data?.[0]?.updated_balance || 0;
       setMonthlyAccBalance(lastBalance);
-      console.log(lastBalance);
 
       const out = summary.filter(
         (s) => s.month >= fromMonth && s.month <= toMonth
@@ -212,11 +233,25 @@ export default function ForcastingDashboard() {
     }
   };
 
+  // When dialog opens for a month, default the date range to that month's first->last day
+  useEffect(() => {
+    if (dialogOpen && selectedMonth) {
+      const start = dayjs(selectedMonth + "-01").startOf("day");
+      const end = start.endOf("month").endOf("day");
+      setRangeStart(start);
+      setRangeEnd(end);
+      setSelectedCategory(null);
+    } else {
+      setRangeStart(null);
+      setRangeEnd(null);
+    }
+  }, [dialogOpen, selectedMonth]);
+
   // ---------- DEBUG: quick log to see month details when dialog opens ----------
   useEffect(() => {
     if (selectedMonth && fullData) {
       const md = fullData.months?.find((m) => m.month === selectedMonth);
-      console.log("DEBUG monthDetails for", selectedMonth, md);
+      // console.log("DEBUG monthDetails for", selectedMonth, md);
     }
   }, [selectedMonth, fullData]);
 
@@ -225,47 +260,48 @@ export default function ForcastingDashboard() {
     return fullData.months.find((m) => m.month === selectedMonth) || null;
   }, [fullData, selectedMonth]);
 
-  // Build merged income (ACTUAL + FORECAST) — now includes robust due_date fallback
-  const mergedIncome = useMemo(() => {
-    if (!monthDetails) return [];
+  // Build merged income (ACTUAL + FORECAST)
+const mergedIncome = useMemo(() => {
+  if (!monthDetails) return [];
 
-    const actual = monthDetails.actualIncomeItems || [];
-    const forecast = monthDetails.forecastIncomeItems || [];
+  const actual = monthDetails.actualIncomeItems || [];
+  const forecast = monthDetails.forecastIncomeItems || [];
 
-    // map actuals by invoice_number / id / project for quick matching
-    const actualByNumber = new Map();
-    const actualById = new Map();
-    actual.forEach(a => {
-      if (a.invoice_number) actualByNumber.set(String(a.invoice_number), a);
-      if (a.invoice_id != null) actualById.set(String(a.invoice_id), a);
-    });
+  return forecast.map((f) => {
+    let match =
+      actual.find((a) => a.invoice_number === f.invoice_number) ||
+      actual.find(
+        (a) =>
+          a.project_id === f.project_id &&
+          Number(a.invoice_value || 0) === Number(f.invoice_value || f.amount || 0)
+      );
 
-    return forecast.map((f) => {
-      // try to find corresponding actual received invoice
-      let match =
-        (f.invoice_id != null && actualById.get(String(f.invoice_id))) ||
-        (f.invoice_number && actualByNumber.get(String(f.invoice_number))) ||
-        actual.find(
-          (a) =>
-            a.project_id === f.project_id &&
-            Number(a.invoice_value || a.total_with_gst || 0) === Number(f.invoice_value || f.amount || f.total_with_gst || 0)
-        );
+    const isReceived = !!match;
 
-      // determine status and received_date
-      const isReceived = !!(match && match.received_date);
-      const received_date = match?.received_date || null;
+    const finalReceivedDate = match?.received_date || null;
+    const finalDueDate = f.due_date || null;
 
-      // due_date fallback chain:
-      const due_date = f.due_date || match?.due_date || match?.display_date || match?.received_date || null;
+    // IMPORTANT FIX → fallback date for filtering
+    const finalFilterDate =
+      finalReceivedDate ||
+      finalDueDate ||
+      f.invoice_date ||
+      `${selectedMonth}-01`; // always safe
 
-      return {
-        ...f,
-        due_date,
-        status: isReceived ? "Received" : "Not Received",
-        received_date,
-      };
-    });
-  }, [monthDetails]);
+    return {
+      ...f,
+      status: isReceived ? "Received" : "Not Received",
+      received_date: finalReceivedDate,
+      due_date: finalDueDate,
+      filter_date: finalFilterDate,
+      invoice_value: Number(
+        f.invoice_value || f.amount || f.total_with_gst || 0
+      ),
+    };
+  });
+}, [monthDetails, selectedMonth]);
+
+
 
   const incomeSummary = useMemo(() => {
     if (!mergedIncome) return null;
@@ -306,102 +342,111 @@ export default function ForcastingDashboard() {
 
   // ---------- Build merged EXPENSES (Actual + Forecast) ----------
   // NOTE: changed only to avoid showing paid_amount/paid_date for forecast rows unless truly paid
-  const mergedExpenses = useMemo(() => {
-    if (!monthDetails) return [];
+// ---------- Build merged EXPENSES (Actual + Forecast) ----------
+const mergedExpenses = useMemo(() => {
+  if (!monthDetails) return [];
 
-    const actual = monthDetails.actualExpenseItems || [];      // actual paid rows (from backend)
-    const forecast = monthDetails.forecastExpenseItems || [];  // forecast / expected rows (from backend)
+  const actual = monthDetails.actualExpenseItems || [];      // actual paid rows (from backend)
+  const forecast = monthDetails.forecastExpenseItems || [];  // forecast / expected rows (from backend)
 
-    // map actual payments by expense_id for quick lookup
-    const actualById = new Map();
-    actual.forEach(a => {
-      if (a.expense_id != null) actualById.set(String(a.expense_id), a);
+  // map actual payments by expense_id for quick lookup
+  const actualById = new Map();
+  actual.forEach(a => {
+    if (a.expense_id != null) actualById.set(String(a.expense_id), a);
+  });
+
+  // also index actual rows by type+amount as a fallback (helps when expense_id not present)
+  const actualByTypeAmount = {};
+  actual.forEach(a => {
+    const key = `${String(a.expense_type || a.type || "").trim().toLowerCase()}|${Number(a.amount || a.paid_amount || 0)}`;
+    (actualByTypeAmount[key] ||= []).push(a);
+  });
+
+  const merged = [];
+
+  // 1) Add ALL forecast rows (no collapsing). If there's a matching actual by id -> merge paid info,
+  // but only expose paid_amount/paid_date when the payment is actually paid.
+  forecast.forEach(f => {
+    const fid = f.expense_id != null ? String(f.expense_id) : null;
+
+    // try expense_id match
+    let match = fid ? actualById.get(fid) : undefined;
+
+    // fallback: try by type+amount (some actual rows may lack expense_id)
+    if (!match) {
+      const key = `${String(f.type || "").trim().toLowerCase()}|${Number(f.amount || f.paid_amount || 0)}`;
+      const list = actualByTypeAmount[key] || [];
+      match = list.length ? list[0] : undefined;
+    }
+
+    // determine candidate paid amount/date from match (use sensible fallbacks)
+    const candidatePaidAmount =
+      match?.paid_amount != null
+        ? Number(match.paid_amount)
+        : (match?.actual_amount != null ? Number(match.actual_amount) : (f.paid_amount != null ? Number(f.paid_amount) : 0));
+
+    let candidatePaidDate = match?.paid_date ?? f.paid_date ?? null;
+    if (!candidatePaidDate && match?.month_year) {
+      candidatePaidDate = `${String(match.month_year).slice(0,7)}-01`;
+    }
+
+    const statusFromMatch = match?.status ? String(match.status).trim().toLowerCase() : null;
+
+    // STRICT isPaid: require (paid_amount > 0 AND paid_date exists) OR explicit status === 'paid'
+    const isPaid = (candidatePaidAmount > 0 && candidatePaidDate) || statusFromMatch === "paid";
+
+    // status shown in UI: prefer explicit paid marker, otherwise use forecast status or Not Paid
+    const status = isPaid ? "Paid" : (f.status || (statusFromMatch ? (statusFromMatch === "paid" ? "Paid" : "Unpaid") : "Not Paid"));
+
+    merged.push({
+      expense_id: f.expense_id,
+      type: f.type,
+      description: f.description,
+      regular: f.regular ?? "No",
+      amount: Number(f.amount ?? f.paid_amount ?? 0),
+      // only expose paid_amount/paid_date if isPaid === true
+      paid_amount: isPaid ? Number(candidatePaidAmount || 0) : 0,
+      paid_date: isPaid ? (candidatePaidDate ?? null) : null,
+      status,
+      actual_amount: match ? (match.amount ?? match.paid_amount ?? match.actual_amount ?? 0) : 0,
+      _source: match ? "forecast+actual" : "forecast-only",
+      due_date: f.due_date ?? null,
     });
+  });
 
-    // also index actual rows by type+amount as a fallback (helps when expense_id not present)
-    const actualByTypeAmount = {};
-    actual.forEach(a => {
-      const key = `${String(a.expense_type || a.type || "").trim().toLowerCase()}|${Number(a.amount || a.paid_amount || 0)}`;
-      (actualByTypeAmount[key] ||= []).push(a);
-    });
+  // 2) Append any actual-only rows that were not in forecast (show them too)
+  actual.forEach(a => {
+    const exists = merged.some(m =>
+      m.expense_id != null && a.expense_id != null && String(m.expense_id) === String(a.expense_id)
+    );
 
-    const merged = [];
+    if (!exists) {
+      // normalize paid_date similarly
+      let paidDate = a.paid_date ?? null;
+      if (!paidDate && a.month_year) paidDate = `${String(a.month_year).slice(0,7)}-01`;
 
-    // 1) Add ALL forecast rows (no collapsing). If there's a matching actual by id -> merge paid info,
-    // but only expose paid_amount/paid_date when the payment is actually paid.
-    forecast.forEach(f => {
-      const fid = f.expense_id != null ? String(f.expense_id) : null;
-
-      // try expense_id match
-      let match = fid ? actualById.get(fid) : undefined;
-
-      // fallback: try by type+amount (some actual rows may lack expense_id)
-      if (!match) {
-        const key = `${String(f.type || "").trim().toLowerCase()}|${Number(f.amount || f.paid_amount || 0)}`;
-        const list = actualByTypeAmount[key] || [];
-        match = list.length ? list[0] : undefined;
-      }
-
-      // Decide paid_amount and paid_date sensibly: prefer actual values, else keep forecast (if any)
-      const candidatePaidAmount = match?.paid_amount ?? match?.amount ?? f.paid_amount ?? 0;
-      let candidatePaidDate = match?.paid_date ?? f.paid_date ?? null;
-      if (!candidatePaidDate && match?.month_year) {
-        candidatePaidDate = `${String(match.month_year).slice(0,7)}-01`;
-      }
-
-      // Determine whether this row should be considered paid (strict check)
-      const statusFromMatch = match?.status ? String(match.status).trim().toLowerCase() : null;
-      const isPaid = (Number(candidatePaidAmount) > 0) || statusFromMatch === "paid" || statusFromMatch === "yes";
-
-      const status = isPaid ? "Paid" : (f.status || "Not Paid");
+      const paidAmt = a.paid_amount != null ? Number(a.paid_amount) : (a.actual_amount != null ? Number(a.actual_amount) : Number(a.amount ?? 0));
+      const statusFromA = a.status ? String(a.status).trim().toLowerCase() : null;
+      const isPaidA = (paidAmt > 0 && paidDate) || statusFromA === "paid";
 
       merged.push({
-        expense_id: f.expense_id,
-        type: f.type,
-        description: f.description,
-        regular: f.regular ?? f.regular ?? "No",
-        amount: Number(f.amount ?? f.paid_amount ?? 0),
-        // only expose paid_amount/paid_date if isPaid === true
-        paid_amount: isPaid ? Number(candidatePaidAmount || 0) : 0,
-        paid_date: isPaid ? (candidatePaidDate ?? null) : null,
-        status,
-        actual_amount: match ? (match.amount ?? match.paid_amount ?? 0) : 0,
-        _source: match ? "forecast+actual" : "forecast-only",
-        // include due_date from forecast row if present (forecast rows already set due_date in backend)
-        due_date: f.due_date ?? null,
+        expense_id: a.expense_id,
+        type: a.expense_type || a.type || "Other",
+        description: a.description,
+        regular: a.regular ?? "No",
+        amount: Number(a.amount ?? a.paid_amount ?? 0),
+        paid_amount: isPaidA ? paidAmt : 0,
+        paid_date: isPaidA ? paidDate : null,
+        status: isPaidA ? "Paid" : (a.status ?? "Not Paid"),
+        actual_amount: Number(a.amount ?? a.paid_amount ?? a.actual_amount ?? 0),
+        _source: "actual-only",
+        due_date: a.due_date ?? null,
       });
-    });
+    }
+  });
 
-    // 2) Append any actual-only rows that were not in forecast (show them too)
-    actual.forEach(a => {
-      const exists = merged.some(m =>
-        m.expense_id != null && a.expense_id != null && String(m.expense_id) === String(a.expense_id)
-      );
-
-      if (!exists) {
-        // normalize paid_date similarly
-        let paidDate = a.paid_date ?? null;
-        if (!paidDate && a.month_year) paidDate = `${String(a.month_year).slice(0,7)}-01`;
-
-        merged.push({
-          expense_id: a.expense_id,
-          type: a.expense_type || a.type || "Other",
-          description: a.description,
-          regular: a.regular ?? "No",
-          amount: Number(a.amount ?? a.paid_amount ?? 0),
-          paid_amount: Number(a.paid_amount ?? a.actual_amount ?? 0),
-          paid_date: paidDate,
-          status: a.status ?? (Number(a.paid_amount ?? a.amount ?? 0) > 0 ? "Paid" : "Not Paid"),
-          actual_amount: Number(a.amount ?? a.paid_amount ?? 0),
-          _source: "actual-only",
-          due_date: a.due_date ?? null,
-        });
-      }
-    });
-
-    // preserve order: keep forecast order first, actual-only appended — this matches your backend grouping
-    return merged;
-  }, [monthDetails]);
+  return merged;
+}, [monthDetails]);
 
   // CATEGORY DETECTION (Salary, PF, TDS, PT, Insurance)
   const MAIN = ["Salary", "PF", "Insurance", "PT", "TDS"];
@@ -416,16 +461,12 @@ export default function ForcastingDashboard() {
     return MAIN.includes(cat) ? cat : type;
   };
 
-  // Build Category Totals
+  // Build Category Totals (monthly)
   const { categoryTotals, grandTotalExpenses } = useMemo(() => {
     const totals = {};
-
-    // mergedExpenses may be null/undefined while loading — guard it
     (mergedExpenses || []).forEach((exp) => {
       const cat = getCategory(exp.type);
       if (!totals[cat]) totals[cat] = 0;
-
-      // Use actual amount if available, otherwise forecast
       const finalAmount = exp.actual_amount ? exp.actual_amount : exp.amount;
       totals[cat] += Number(finalAmount || 0);
     });
@@ -469,7 +510,173 @@ export default function ForcastingDashboard() {
     };
   }, [mergedExpenses]);
 
-  // Acc Balance Calculation
+  // ---------- DATE RANGE filtering helpers ----------
+  const parseToDay = (d) => {
+    if (!d) return null;
+    // if it's already dayjs
+    if (dayjs.isDayjs(d)) return d.startOf("day");
+    try {
+      const s = String(d);
+      // month-only 'YYYY-MM' fallback -> treat as first day
+      if (/^\d{4}-\d{2}$/.test(s)) {
+        return dayjs(s + "-01").startOf("day");
+      }
+      const parsed = dayjs(s);
+      return parsed.isValid() ? parsed.startOf("day") : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const inRangeInclusive = (candidateStr, startDayjs, endDayjs) => {
+    const candidate = parseToDay(candidateStr);
+    if (!candidate) return false;
+    if (!startDayjs && !endDayjs) return true;
+    if (startDayjs && endDayjs) {
+      // inclusive comparison
+      return !candidate.isBefore(startDayjs.startOf("day")) && !candidate.isAfter(endDayjs.endOf("day"));
+    }
+    if (startDayjs) return !candidate.isBefore(startDayjs.startOf("day"));
+    if (endDayjs) return !candidate.isAfter(endDayjs.endOf("day"));
+    return true;
+  };
+const filteredIncome = useMemo(() => {
+  if (!mergedIncome) return [];
+
+  return mergedIncome.filter((item) => {
+    const dateStr = item.filter_date;
+    if (!dateStr) return false;
+
+    const d = dayjs(dateStr);
+    if (!d.isValid()) return false;
+
+    const afterStart = !appliedStart || !d.isBefore(appliedStart, "day");
+    const beforeEnd = !appliedEnd || !d.isAfter(appliedEnd, "day");
+    if (!(afterStart && beforeEnd)) return false;
+
+    if (incomeStatusFilter === "All") return true;
+    if (incomeStatusFilter === "Received")
+      return item.status === "Received";
+    if (incomeStatusFilter === "Not Received")
+      return item.status !== "Received";
+
+    return true;
+  });
+}, [mergedIncome, appliedStart, appliedEnd, incomeStatusFilter]);
+
+
+const filteredExpenses = useMemo(() => {
+  if (!mergedExpenses) return [];
+
+  return mergedExpenses.filter((exp) => {
+    // DATE FILTER
+    const dateStr =
+      exp.status === "Paid" ? exp.paid_date : exp.due_date;
+
+    if (!dateStr) return false;
+
+    const d = dayjs(dateStr);
+    if (!d.isValid()) return false;
+
+    const afterStart =
+      !appliedStart || !d.isBefore(appliedStart, "day");
+    const beforeEnd =
+      !appliedEnd || !d.isAfter(appliedEnd, "day");
+
+    if (!(afterStart && beforeEnd)) return false;
+
+    // STATUS FILTER
+    if (expenseStatusFilter === "All") return true;
+    if (expenseStatusFilter === "Paid") return exp.status === "Paid";
+    if (expenseStatusFilter === "Not Paid") return exp.status !== "Paid";
+
+    return true;
+  });
+}, [mergedExpenses, appliedStart, appliedEnd, expenseStatusFilter]);
+
+
+
+  // Summaries computed from filtered lists
+  const dateRangeIncomeSummary = useMemo(() => {
+    const records = filteredIncome || [];
+    let receivedCount = 0;
+    let notReceivedCount = 0;
+    let totalValue = 0;
+    let totalReceivedValue = 0;
+    let totalNotReceivedValue = 0;
+    let totalGST = 0;
+
+    records.forEach((r) => {
+      const value = Number(r.invoice_value || r.amount || 0);
+      const gst = Number(r.gst_amount || 0);
+      totalValue += value;
+      totalGST += gst;
+
+      if (r.status === "Received") {
+        receivedCount++;
+        totalReceivedValue += value;
+      } else {
+        notReceivedCount++;
+        totalNotReceivedValue += value;
+      }
+    });
+
+    return {
+      receivedCount,
+      notReceivedCount,
+      totalValue,
+      totalReceivedValue,
+      totalNotReceivedValue,
+      totalGST,
+    };
+  }, [filteredIncome]);
+
+  const dateRangeExpenseSummary = useMemo(() => {
+    const records = filteredExpenses || [];
+    let paidCount = 0;
+    let notPaidCount = 0;
+    let totalExpense = 0;
+    let totalPaidAmount = 0;
+    let totalNotPaidAmount = 0;
+
+    records.forEach((exp) => {
+      const amount = Number(exp.amount || 0);
+      totalExpense += amount;
+      if (exp.status === "Paid") {
+        paidCount++;
+        totalPaidAmount += amount;
+      } else {
+        notPaidCount++;
+        totalNotPaidAmount += amount;
+      }
+    });
+
+    return {
+      paidCount,
+      notPaidCount,
+      totalExpense,
+      totalPaidAmount,
+      totalNotPaidAmount,
+    };
+  }, [filteredExpenses]);
+
+  // Category totals from filtered expenses
+  const { dateCategoryTotals, dateGrandTotalExpenses } = useMemo(() => {
+    const totals = {};
+    (filteredExpenses || []).forEach((exp) => {
+      const cat = getCategory(exp.type);
+      if (!totals[cat]) totals[cat] = 0;
+      const finalAmount = exp.actual_amount ? exp.actual_amount : exp.amount;
+      totals[cat] += Number(finalAmount || 0);
+    });
+
+    return {
+      dateCategoryTotals: totals,
+      dateGrandTotalExpenses: Object.values(totals).reduce((a, b) => a + b, 0),
+    };
+  }, [filteredExpenses]);
+
+  // Acc Balance Calculation (unchanged main view)
   const safeNumber = (v) => Number(v || 0);
 
   const sorted = [...filtered].sort(
@@ -494,21 +701,6 @@ export default function ForcastingDashboard() {
 
     return { ...row, accountBalance: runBal };
   });
-
-  const summaryCardStyle = {
-    backgroundColor: "#ffffff",
-    padding: "10px 14px",
-    borderRadius: "10px",
-    minWidth: "180px",
-    boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
-    border: "1px solid #e5e7eb",
-  };
-
-  const summaryValueStyle = {
-    fontSize: "1.1rem",
-    marginTop: 4,
-    fontWeight: 700,
-  };
 
   // safe date formatting helper
   const fmtDate = (d) => {
@@ -640,8 +832,7 @@ export default function ForcastingDashboard() {
                     }}
                     onClick={() => {
                       setSelectedMonth(row.month);
-                      // ensure monthDetails is available before dialog renders content
-                      setTimeout(() => setDialogOpen(true), 0);
+                      setDialogOpen(true);
                     }}
                   >
                     View
@@ -676,9 +867,85 @@ export default function ForcastingDashboard() {
         </DialogTitle>
 
         <DialogContent dividers>
-          {/* Summary Top Box */}
+          {/* ===========================
+              DATE RANGE FILTER (Beautiful)
+          =========================== */}
+            <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="en-gb">
+           <Box
+  sx={{
+    display: "flex",
+    alignItems: "center",
+    gap: 3,
+    p: 2,
+    mb: 3,
+    borderRadius: 2,
+    background: "linear-gradient(90deg, #eef2ff, #f5f3ff)",
+  }}
+>
+  <Typography sx={{ fontWeight: 700, color: "#3730a3" }}>
+    Filter By Date:
+  </Typography>
+
+  {/* FROM DATE */}
+  <DatePicker
+    label="From"
+    value={rangeStart}
+    minDate={dayjs(selectedMonth + "-01").startOf("month")}
+    maxDate={dayjs(selectedMonth + "-01").endOf("month")}
+    onChange={(newValue) =>
+      setRangeStart(newValue ? dayjs(newValue).startOf("day") : null)
+    }
+    slotProps={{
+      textField: {
+        size: "small",
+        sx: { minWidth: 170 },
+      },
+    }}
+  />
+
+  {/* TO DATE */}
+  <DatePicker
+    label="To"
+    value={rangeEnd}
+    minDate={dayjs(selectedMonth + "-01").startOf("month")}
+    maxDate={dayjs(selectedMonth + "-01").endOf("month")}
+    onChange={(newValue) =>
+      setRangeEnd(newValue ? dayjs(newValue).endOf("day") : null)
+    }
+    slotProps={{
+      textField: {
+        size: "small",
+        sx: { minWidth: 170 },
+      },
+    }}
+  />
+
+  {/* SEARCH BUTTON */}
+  <Button
+    variant="contained"
+    sx={{
+      bgcolor: "#4338ca",
+      textTransform: "none",
+      px: 3,
+      py: 1,
+      borderRadius: 2,
+      fontWeight: 700,
+      ":hover": { bgcolor: "#3730a3" },
+    }}
+    onClick={() => {
+      setAppliedStart(rangeStart);
+      setAppliedEnd(rangeEnd);
+    }}
+  >
+    Search
+  </Button>
+</Box>
+
+          </LocalizationProvider>
+
+          {/* Summary Top Box (date-range) */}
           <Box sx={{ width: "50%" }}>
-            {incomeSummary && (
+            {dateRangeIncomeSummary && (
               <Box
                 sx={{
                   display: "grid",
@@ -711,14 +978,14 @@ export default function ForcastingDashboard() {
                       <tr>
                         <td style={{ textAlign: "left", padding: "2px 4px" }}>Count</td>
                         <td style={{ textAlign: "right", fontWeight: 700 }}>
-                          {incomeSummary.receivedCount}
+                          {dateRangeIncomeSummary.receivedCount}
                         </td>
                       </tr>
 
                       <tr>
                         <td style={{ textAlign: "left", padding: "2px 4px" }}>Amount</td>
                         <td style={{ textAlign: "right", fontWeight: 700 }}>
-                          {currency(incomeSummary.totalReceivedValue)}
+                          {currency(dateRangeIncomeSummary.totalReceivedValue)}
                         </td>
                       </tr>
                     </tbody>
@@ -749,14 +1016,14 @@ export default function ForcastingDashboard() {
                       <tr>
                         <td style={{ textAlign: "left", padding: "2px 4px" }}>Count</td>
                         <td style={{ textAlign: "right", fontWeight: 700 }}>
-                          {incomeSummary.notReceivedCount}
+                          {dateRangeIncomeSummary.notReceivedCount}
                         </td>
                       </tr>
 
                       <tr>
                         <td style={{ textAlign: "left", padding: "2px 4px" }}>Amount</td>
                         <td style={{ textAlign: "right", fontWeight: 700 }}>
-                          {currency(incomeSummary.totalNotReceivedValue)}
+                          {currency(dateRangeIncomeSummary.totalNotReceivedValue)}
                         </td>
                       </tr>
                     </tbody>
@@ -786,14 +1053,14 @@ export default function ForcastingDashboard() {
                       <tr>
                         <td style={{ textAlign: "left", padding: "2px 4px" }}>Total</td>
                         <td style={{ textAlign: "right", fontWeight: 600 }}>
-                          {currency(incomeSummary.totalValue)}
+                          {currency(dateRangeIncomeSummary.totalValue)}
                         </td>
                       </tr>
 
                       <tr>
                         <td style={{ textAlign: "left", padding: "2px 4px" }}>GST</td>
                         <td style={{ textAlign: "right", fontWeight: 600 }}>
-                          - {currency(incomeSummary.totalGST)}
+                          - {currency(dateRangeIncomeSummary.totalGST)}
                         </td>
                       </tr>
 
@@ -815,7 +1082,7 @@ export default function ForcastingDashboard() {
                             borderTop: "1px solid #c3d5f5",
                           }}
                         >
-                          {currency(incomeSummary.totalValue - incomeSummary.totalGST)}
+                          {currency(dateRangeIncomeSummary.totalValue - dateRangeIncomeSummary.totalGST)}
                         </td>
                       </tr>
                     </tbody>
@@ -828,51 +1095,82 @@ export default function ForcastingDashboard() {
           {monthDetails && (
             <>
               {/* =======================
-                 INCOME OVERVIEW TABLE
+                 INCOME OVERVIEW TABLE (date filtered)
               ======================== */}
-              <SectionTable
-                title={`Income — ${formatMonthLabel(selectedMonth)}`}
-                columns={[
-                  { header: "Project", render: (r) => r.projectName || r.project_id || "-" },
-                  { header: "Invoice No", render: (r) => r.invoice_number || "-" },
-                  { header: "Value (₹)", render: (r) => currency(r.invoice_value || r.amount || r.total_with_gst) },
-                  { header: "GST (₹)", render: (r) => currency(r.gst_amount || 0) },
-                  // NEW: Due Date column pulled from invoice rows (due_date)
-                  {
-                    header: "Due Date",
-                    render: (r) => (r.due_date ? fmtDate(r.due_date) : "-"),
-                  },
-                  {
-                    header: "Received Date",
-                    render: (r) =>
-                      r.status === "Received"
-                        ? r.received_date
-                          ? fmtDate(r.received_date)
-                          : "-"
-                        : r.due_date
-                        ? fmtDate(r.due_date)
-                        : "-",
-                  },
-                  {
-                    header: "Status",
-                    render: (r) =>
-                      r.status === "Received" ? (
-                        <span style={{ color: "green", fontWeight: 700 }}>✔ Received</span>
-                      ) : (
-                        <span style={{ color: "orange", fontWeight: 700 }}>⏳ Not Received</span>
-                      ),
-                  },
-                ]}
-                rows={mergedIncome}
-              />
+           <SectionTable
+  title={`Income — ${formatMonthLabel(selectedMonth)}`}
+  columns={[
+    { header: "Project", render: (r) => r.projectName || r.project_id || "-" },
+    { header: "Invoice No", render: (r) => r.invoice_number || "-" },
+    { header: "Value (₹)", render: (r) => currency(r.invoice_value || r.amount || r.total_with_gst) },
+    { header: "GST (₹)", render: (r) => currency(r.gst_amount || 0) },
+    {
+      header: "Date",
+      render: (r) =>
+        r.status === "Received"
+          ? r.received_date
+            ? new Date(r.received_date).toLocaleDateString("en-GB")
+            : "-"
+          : r.due_date
+          ? new Date(r.due_date).toLocaleDateString("en-GB")
+          : "-",
+    },
+    {
+      header: (
+        <Box sx={{ display: "flex", flexDirection: "column" }}>
+          <span>Status</span>
+          <select
+            value={incomeStatusFilter}
+            onChange={(e) => setIncomeStatusFilter(e.target.value)}
+            style={{
+              marginTop: 4,
+              padding: "2px 6px",
+              fontSize: "0.75rem",
+              borderRadius: 6,
+              border: "1px solid #ccc",
+            }}
+          >
+            <option value="All">All</option>
+            <option value="Received">Received</option>
+            <option value="Not Received">Not Received</option>
+          </select>
+        </Box>
+      ),
+      render: (r) =>
+        r.status === "Received" ? (
+          <span style={{ color: "green", fontWeight: 700 }}>✔ Received</span>
+        ) : (
+          <span style={{ color: "orange", fontWeight: 700 }}>⏳ Not Received</span>
+        ),
+    },
+  ]}
+  rows={filteredIncome}
+/>
 
-              <Divider>Expenses</Divider>
+
+              <Divider> <div
+  style={{
+    display: "inline-block",
+    // padding: "8px 18px",
+    // background: "linear-gradient(90deg, #dbeafe, #eff6ff)",
+    borderRadius: "10px",
+    fontWeight: 700,
+    color: "#1e3a8a",
+    fontSize: "1.1rem",
+    boxShadow: "0 3px 6px rgba(0,0,0,0.08)",
+    marginTop: "4px",
+  }}
+>
+  {`Expenses — ${formatMonthLabel(selectedMonth)}`}
+</div></Divider>
 
               {/* =======================
-                  EXPENSES OVERVIEW SECTION
+                  EXPENSES OVERVIEW SECTION (date filtered)
               ======================== */}
               <Box sx={{ width: "50%" }}>
-                {expenseSummary && (
+                            
+
+                {dateRangeExpenseSummary && (
                   <Box
                     sx={{
                       display: "grid",
@@ -906,14 +1204,14 @@ export default function ForcastingDashboard() {
                           <tr>
                             <td style={{ textAlign: "left", padding: "2px 4px" }}>Count</td>
                             <td style={{ textAlign: "right", fontWeight: 700 }}>
-                              {expenseSummary.paidCount}
+                              {dateRangeExpenseSummary.paidCount}
                             </td>
                           </tr>
 
                           <tr>
                             <td style={{ textAlign: "left", padding: "2px 4px" }}>Amount</td>
                             <td style={{ textAlign: "right", fontWeight: 700 }}>
-                              {currency(expenseSummary.totalPaidAmount)}
+                              {currency(dateRangeExpenseSummary.totalPaidAmount)}
                             </td>
                           </tr>
                         </tbody>
@@ -944,14 +1242,14 @@ export default function ForcastingDashboard() {
                           <tr>
                             <td style={{ textAlign: "left", padding: "2px 4px" }}>Count</td>
                             <td style={{ textAlign: "right", fontWeight: 700 }}>
-                              {expenseSummary.notPaidCount}
+                              {dateRangeExpenseSummary.notPaidCount}
                             </td>
                           </tr>
 
                           <tr>
                             <td style={{ textAlign: "left", padding: "2px 4px" }}>Amount</td>
                             <td style={{ textAlign: "right", fontWeight: 700 }}>
-                              {currency(expenseSummary.totalNotPaidAmount)}
+                              {currency(dateRangeExpenseSummary.totalNotPaidAmount)}
                             </td>
                           </tr>
                         </tbody>
@@ -982,7 +1280,7 @@ export default function ForcastingDashboard() {
                           <tr>
                             <td style={{ textAlign: "left", padding: "2px 4px" }}>Total</td>
                             <td style={{ textAlign: "right", fontWeight: 700 }}>
-                              {currency(expenseSummary.totalExpense)}
+                              {currency(dateRangeExpenseSummary.totalExpense)}
                             </td>
                           </tr>
                         </tbody>
@@ -992,8 +1290,24 @@ export default function ForcastingDashboard() {
                 )}
               </Box>
 
+  <div
+  style={{
+    display: "inline-block",
+    padding: "8px 18px",
+    background: "linear-gradient(90deg, #dbeafe, #eff6ff)",
+    borderRadius: "10px",
+    fontWeight: 700,
+    color: "#1e3a8a",
+    fontSize: "1.1rem",
+    boxShadow: "0 3px 6px rgba(0,0,0,0.08)",
+    // marginBottom: "14px",
+  }}
+>
+  {`Expenses — ${formatMonthLabel(selectedMonth)}`}
+</div>
+
               <div style={{ display: "flex", gap: "20px", marginTop: "30px" }}>
-                {/* LEFT — CATEGORY TOTALS */}
+                {/* LEFT — CATEGORY TOTALS (date filtered) */}
                 <div style={{ width: "28%" }}>
                   <TableContainer
                     component={Paper}
@@ -1019,7 +1333,7 @@ export default function ForcastingDashboard() {
                               fontFamily: "monospace",
                             }}
                           >
-                            TOTAL — {currency(grandTotalExpenses)}
+                            TOTAL — {currency(dateGrandTotalExpenses)}
                           </TableCell>
                         </TableRow>
 
@@ -1034,7 +1348,7 @@ export default function ForcastingDashboard() {
 
                       {/* CATEGORY LIST */}
                       <TableBody>
-                        {Object.keys(categoryTotals).map((cat) => (
+                        {Object.keys(dateCategoryTotals).map((cat) => (
                           <TableRow
                             key={cat}
                             hover
@@ -1066,7 +1380,7 @@ export default function ForcastingDashboard() {
                             </TableCell>
 
                             <TableCell style={{ fontWeight: 700, textAlign: "right" }}>
-                              {currency(categoryTotals[cat])}
+                              {currency(dateCategoryTotals[cat])}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -1090,7 +1404,7 @@ export default function ForcastingDashboard() {
                   </TableContainer>
                 </div>
 
-                {/* RIGHT — EXPENSE DETAILS */}
+                {/* RIGHT — EXPENSE DETAILS (date filtered) */}
                 <div style={{ width: "72%" }}>
                   <TableContainer
                     component={Paper}
@@ -1103,20 +1417,44 @@ export default function ForcastingDashboard() {
                     }}
                   >
                     <Table stickyHeader>
-                      <TableHead>
-                        <TableRow style={{ backgroundColor: "#f7f7fb" }}>
-                          <TableCell>Regular</TableCell>
-                          <TableCell>Type</TableCell>
-                          <TableCell>Amount</TableCell>
-                          <TableCell>Paid Amount</TableCell>
-                          <TableCell>Due Date</TableCell>
-                          <TableCell>Status</TableCell>
-                          <TableCell>Paid Date</TableCell>
-                        </TableRow>
-                      </TableHead>
+                     <TableHead>
+  <TableRow style={{ backgroundColor: "#f7f7fb" }}>
+    <TableCell>Regular</TableCell>
+    <TableCell>Type</TableCell>
+    <TableCell>Amount</TableCell>
+    <TableCell>Paid Amount</TableCell>
+    <TableCell>Due Date</TableCell>
+
+    {/* STATUS HEADER WITH DROPDOWN */}
+    <TableCell>
+      <Box sx={{ display: "flex", flexDirection: "column" }}>
+        <span>Status</span>
+
+        <select
+          value={expenseStatusFilter}
+          onChange={(e) => setExpenseStatusFilter(e.target.value)}
+          style={{
+            marginTop: 4,
+            padding: "2px 6px",
+            fontSize: "0.75rem",
+            borderRadius: 6,
+            border: "1px solid #ccc",
+          }}
+        >
+          <option value="All">All</option>
+          <option value="Paid">Paid</option>
+          <option value="Not Paid">Not Paid</option>
+        </select>
+      </Box>
+    </TableCell>
+
+    <TableCell>Paid Date</TableCell>
+  </TableRow>
+</TableHead>
+
 
                       <TableBody>
-                        {mergedExpenses
+                        {filteredExpenses
                           .filter((exp) => {
                             if (!selectedCategory) return true;
 
