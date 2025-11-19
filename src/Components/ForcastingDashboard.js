@@ -57,11 +57,13 @@ const formatMonthLabel = (monthKey) => {
 };
 
 /* Beautiful Section Table */
+// ----------------------------------------------------------
+// BEAUTIFUL REUSABLE SECTION TABLE  (NO DATA SUPPORT ADDED)
+// ----------------------------------------------------------
 const SectionTable = ({ title, columns = [], rows = [] }) => {
-  if (!rows || rows.length === 0) return null;
-
   return (
     <div style={{ marginTop: 28 }}>
+      {/* TITLE */}
       <div
         style={{
           fontSize: "1.2rem",
@@ -78,6 +80,7 @@ const SectionTable = ({ title, columns = [], rows = [] }) => {
         {title}
       </div>
 
+      {/* TABLE */}
       <TableContainer
         component={Paper}
         style={{
@@ -108,36 +111,57 @@ const SectionTable = ({ title, columns = [], rows = [] }) => {
           </TableHead>
 
           <TableBody>
-            {rows.map((row, rIdx) => (
-              <TableRow
-                key={rIdx}
-                style={{
-                  background: rIdx % 2 === 0 ? "#ffffff" : "#f8fafc",
-                  transition: "0.2s",
-                }}
-              >
-                {columns.map((col, cIdx) => {
-                  const value =
-                    typeof col.render === "function"
-                      ? col.render(row)
-                      : row[col.field];
-
-                  return (
-                    <TableCell
-                      key={cIdx}
-                      style={{
-                        fontSize: "0.85rem",
-                        padding: "8px 12px",
-                        whiteSpace: "nowrap",
-                        color: "#334155",
-                      }}
-                    >
-                      {value ?? "-"}
-                    </TableCell>
-                  );
-                })}
+            {/* If NO DATA → Show this row */}
+            {(!rows || rows.length === 0) && (
+              <TableRow>
+                <TableCell
+                  colSpan={columns.length}
+                  style={{
+                    textAlign: "center",
+                    padding: "24px",
+                    fontWeight: 600,
+                    color: "#6b7280",
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  No data available
+                </TableCell>
               </TableRow>
-            ))}
+            )}
+
+            {/* If DATA → Show table rows */}
+            {rows &&
+              rows.length > 0 &&
+              rows.map((row, rIdx) => (
+                <TableRow
+                  key={rIdx}
+                  style={{
+                    background: rIdx % 2 === 0 ? "#ffffff" : "#f8fafc",
+                    transition: "0.2s",
+                  }}
+                >
+                  {columns.map((col, cIdx) => {
+                    const value =
+                      typeof col.render === "function"
+                        ? col.render(row)
+                        : row[col.field];
+
+                    return (
+                      <TableCell
+                        key={cIdx}
+                        style={{
+                          fontSize: "0.85rem",
+                          padding: "8px 12px",
+                          whiteSpace: "nowrap",
+                          color: "#334155",
+                        }}
+                      >
+                        {value ?? "-"}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              ))}
           </TableBody>
         </Table>
       </TableContainer>
