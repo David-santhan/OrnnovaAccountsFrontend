@@ -225,25 +225,44 @@ export default function ForcastingDashboard() {
     return fullData.months.find((m) => m.month === selectedMonth) || null;
   }, [fullData, selectedMonth]);
 
-  // Build merged income (ACTUAL + FORECAST)
+  // Build merged income (ACTUAL + FORECAST) — now includes robust due_date fallback
   const mergedIncome = useMemo(() => {
     if (!monthDetails) return [];
 
     const actual = monthDetails.actualIncomeItems || [];
     const forecast = monthDetails.forecastIncomeItems || [];
 
+    // map actuals by invoice_number / id / project for quick matching
+    const actualByNumber = new Map();
+    const actualById = new Map();
+    actual.forEach(a => {
+      if (a.invoice_number) actualByNumber.set(String(a.invoice_number), a);
+      if (a.invoice_id != null) actualById.set(String(a.invoice_id), a);
+    });
+
     return forecast.map((f) => {
-      const match = actual.find(
-        (a) =>
-          a.invoice_number === f.invoice_number ||
-          (a.project_id === f.project_id &&
-            Number(a.invoice_value) === Number(f.amount))
-      );
+      // try to find corresponding actual received invoice
+      let match =
+        (f.invoice_id != null && actualById.get(String(f.invoice_id))) ||
+        (f.invoice_number && actualByNumber.get(String(f.invoice_number))) ||
+        actual.find(
+          (a) =>
+            a.project_id === f.project_id &&
+            Number(a.invoice_value || a.total_with_gst || 0) === Number(f.invoice_value || f.amount || f.total_with_gst || 0)
+        );
+
+      // determine status and received_date
+      const isReceived = !!(match && match.received_date);
+      const received_date = match?.received_date || null;
+
+      // due_date fallback chain:
+      const due_date = f.due_date || match?.due_date || match?.display_date || match?.received_date || null;
 
       return {
         ...f,
-        status: match ? "Received" : "Not Received",
-        received_date: match?.received_date || null,
+        due_date,
+        status: isReceived ? "Received" : "Not Received",
+        received_date,
       };
     });
   }, [monthDetails]);
@@ -286,6 +305,7 @@ export default function ForcastingDashboard() {
   }, [mergedIncome]);
 
   // ---------- Build merged EXPENSES (Actual + Forecast) ----------
+  // NOTE: changed only to avoid showing paid_amount/paid_date for forecast rows unless truly paid
   const mergedExpenses = useMemo(() => {
     if (!monthDetails) return [];
 
@@ -307,7 +327,8 @@ export default function ForcastingDashboard() {
 
     const merged = [];
 
-    // 1) Add ALL forecast rows (no collapsing). If there's a matching actual by id -> merge paid info
+    // 1) Add ALL forecast rows (no collapsing). If there's a matching actual by id -> merge paid info,
+    // but only expose paid_amount/paid_date when the payment is actually paid.
     forecast.forEach(f => {
       const fid = f.expense_id != null ? String(f.expense_id) : null;
 
@@ -322,18 +343,17 @@ export default function ForcastingDashboard() {
       }
 
       // Decide paid_amount and paid_date sensibly: prefer actual values, else keep forecast (if any)
-      const paidAmount = match?.paid_amount ?? match?.amount ?? f.paid_amount ?? 0;
-      let paidDate = match?.paid_date ?? f.paid_date ?? null;
-      // if paid_date missing but a month reference exists on actual, use a month-year fallback (not a real date)
-      if (!paidDate && match?.month_year) {
-        // store as ISO-like day for display (frontend formatting will show only date part)
-        paidDate = `${String(match.month_year).slice(0,7)}-01`;
+      const candidatePaidAmount = match?.paid_amount ?? match?.amount ?? f.paid_amount ?? 0;
+      let candidatePaidDate = match?.paid_date ?? f.paid_date ?? null;
+      if (!candidatePaidDate && match?.month_year) {
+        candidatePaidDate = `${String(match.month_year).slice(0,7)}-01`;
       }
-      // status: if actual shows paid_amount > 0 or match.status indicates paid, mark Paid
+
+      // Determine whether this row should be considered paid (strict check)
       const statusFromMatch = match?.status ? String(match.status).trim().toLowerCase() : null;
-      const status = (paidAmount && Number(paidAmount) > 0) || statusFromMatch === "paid" || statusFromMatch === "yes"
-        ? "Paid"
-        : (f.status || "Not Paid");
+      const isPaid = (Number(candidatePaidAmount) > 0) || statusFromMatch === "paid" || statusFromMatch === "yes";
+
+      const status = isPaid ? "Paid" : (f.status || "Not Paid");
 
       merged.push({
         expense_id: f.expense_id,
@@ -341,8 +361,9 @@ export default function ForcastingDashboard() {
         description: f.description,
         regular: f.regular ?? f.regular ?? "No",
         amount: Number(f.amount ?? f.paid_amount ?? 0),
-        paid_amount: Number(paidAmount || 0),
-        paid_date: paidDate ?? null,
+        // only expose paid_amount/paid_date if isPaid === true
+        paid_amount: isPaid ? Number(candidatePaidAmount || 0) : 0,
+        paid_date: isPaid ? (candidatePaidDate ?? null) : null,
         status,
         actual_amount: match ? (match.amount ?? match.paid_amount ?? 0) : 0,
         _source: match ? "forecast+actual" : "forecast-only",
@@ -816,15 +837,20 @@ export default function ForcastingDashboard() {
                   { header: "Invoice No", render: (r) => r.invoice_number || "-" },
                   { header: "Value (₹)", render: (r) => currency(r.invoice_value || r.amount || r.total_with_gst) },
                   { header: "GST (₹)", render: (r) => currency(r.gst_amount || 0) },
+                  // NEW: Due Date column pulled from invoice rows (due_date)
+                  {
+                    header: "Due Date",
+                    render: (r) => (r.due_date ? fmtDate(r.due_date) : "-"),
+                  },
                   {
                     header: "Received Date",
                     render: (r) =>
                       r.status === "Received"
                         ? r.received_date
-                          ? new Date(r.received_date).toLocaleDateString("en-GB")
+                          ? fmtDate(r.received_date)
                           : "-"
                         : r.due_date
-                        ? new Date(r.due_date).toLocaleDateString("en-GB")
+                        ? fmtDate(r.due_date)
                         : "-",
                   },
                   {
@@ -1082,7 +1108,7 @@ export default function ForcastingDashboard() {
                           <TableCell>Regular</TableCell>
                           <TableCell>Type</TableCell>
                           <TableCell>Amount</TableCell>
-                          <TableCell>Paid Amount</TableCell> {/* restored */}
+                          <TableCell>Paid Amount</TableCell>
                           <TableCell>Due Date</TableCell>
                           <TableCell>Status</TableCell>
                           <TableCell>Paid Date</TableCell>
