@@ -18,6 +18,7 @@ import {
   TextField,
   Typography,
   IconButton,
+  Divider,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import CloseIcon from "@mui/icons-material/Close";
@@ -42,8 +43,6 @@ const formatMonthLabel = (monthKey) => {
     return monthKey;
   }
 };
-
-
 
 /* Beautiful Section Table */
 const SectionTable = ({ title, columns = [], rows = [] }) => {
@@ -163,7 +162,6 @@ export default function ForcastingDashboard() {
       const res = await axios.get("http://localhost:7760/forecast");
       const data = res.data || {};
       setFullData(data);
-      console.log(data);
       if (Array.isArray(data.months)) {
         const s = data.months
           .map((m) => ({
@@ -222,223 +220,167 @@ export default function ForcastingDashboard() {
     }
   }, [selectedMonth, fullData]);
 
-  // <<< FIX: add monthDetails useMemo so mergedIncome/mergedExpenses can use it >>>
   const monthDetails = useMemo(() => {
     if (!fullData || !Array.isArray(fullData.months) || !selectedMonth) return null;
     return fullData.months.find((m) => m.month === selectedMonth) || null;
   }, [fullData, selectedMonth]);
 
-  // ---------- Build merged income (ACTUAL + FORECAST) ----------
-  // ---------- Build merged income (ACTUAL + FORECAST) ----------
-// ---------- Build merged income (ACTUAL + FORECAST) ----------
-const mergedIncome = useMemo(() => {
-  if (!monthDetails) return [];
+  // Build merged income (ACTUAL + FORECAST)
+  const mergedIncome = useMemo(() => {
+    if (!monthDetails) return [];
 
-  const actual = monthDetails.actualIncomeItems || [];
-  const forecast = monthDetails.forecastIncomeItems || [];
+    const actual = monthDetails.actualIncomeItems || [];
+    const forecast = monthDetails.forecastIncomeItems || [];
 
-  // index actuals by id/number for fast lookup
-  const actualById = new Map();
-  const actualByNumber = new Map();
-  actual.forEach(a => {
-    if (a.invoice_id != null) actualById.set(String(a.invoice_id), a);
-    if (a.invoice_number) actualByNumber.set(String(a.invoice_number), a);
-  });
-
-  const merged = [];
-
-  // 1) Start with forecast rows, mark Received if there's a matching actual
-  (forecast || []).forEach((f) => {
-    const match =
-      (f.invoice_id != null && actualById.get(String(f.invoice_id))) ||
-      (f.invoice_number && actualByNumber.get(String(f.invoice_number))) ||
-      actual.find(
+    return forecast.map((f) => {
+      const match = actual.find(
         (a) =>
-          a.project_id === f.project_id &&
-          Number(a.invoice_value || a.total_with_gst || 0) === Number(f.invoice_value || f.amount || 0)
+          a.invoice_number === f.invoice_number ||
+          (a.project_id === f.project_id &&
+            Number(a.invoice_value) === Number(f.amount))
       );
 
-    merged.push({
-      // prefer forecast field names but keep both shapes available
-      invoice_id: f.invoice_id,
-      invoice_number: f.invoice_number,
-      project_id: f.project_id,
-      projectName: f.projectName || (f.project && f.project.projectName) || null,
-      invoice_value: f.invoice_value || f.amount || f.total_with_gst || 0,
-      total_with_gst: f.total_with_gst || f.invoice_value || f.amount || 0,
-      gst_amount: f.gst_amount || 0,
-      due_date: f.due_date || null,
-      received_date: match?.received_date || null,
-      status: match ? "Received" : "Not Received",
-      _source: match ? "actual+forecast" : "forecast-only",
+      return {
+        ...f,
+        status: match ? "Received" : "Not Received",
+        received_date: match?.received_date || null,
+      };
     });
-  });
+  }, [monthDetails]);
 
-  // 2) Append any actual-only rows that were not represented above
-  (actual || []).forEach((a) => {
-    const exists =
-      merged.some(
-        (m) =>
-          (m.invoice_id != null && a.invoice_id != null && String(m.invoice_id) === String(a.invoice_id)) ||
-          (m.invoice_number && a.invoice_number && String(m.invoice_number) === String(a.invoice_number))
-      );
+  const incomeSummary = useMemo(() => {
+    if (!mergedIncome) return null;
 
-    if (!exists) {
-      merged.push({
-        invoice_id: a.invoice_id,
-        invoice_number: a.invoice_number,
-        project_id: a.project_id,
-        projectName: a.projectName || null,
-        invoice_value: a.invoice_value || a.total_with_gst || 0,
-        total_with_gst: a.total_with_gst || a.invoice_value || 0,
-        gst_amount: a.gst_amount || 0,
-        due_date: a.due_date || null,
-        received_date: a.received_date || null,
-        status: "Received",
-        _source: "actual-only",
-      });
-    }
-  });
+    let receivedCount = 0;
+    let notReceivedCount = 0;
 
-  // Optional: sort Not Received first, then Received (you can remove if you prefer original order)
-  merged.sort((a, b) => {
-    if (a.status === b.status) {
-      // newer received_date first, otherwise by invoice_number
-      const da = a.received_date ? new Date(a.received_date) : new Date(0);
-      const db = b.received_date ? new Date(b.received_date) : new Date(0);
-      if (da - db !== 0) return db - da;
-      return String(a.invoice_number || "").localeCompare(String(b.invoice_number || ""));
-    }
-    return a.status === "Not Received" ? -1 : 1;
-  });
+    let totalValue = 0;
+    let totalReceivedValue = 0;
+    let totalNotReceivedValue = 0;
+    let totalGST = 0;
 
-  return merged;
-}, [monthDetails]);
+    mergedIncome.forEach((r) => {
+      const value = Number(r.invoice_value || r.amount || 0);
+      const gst = Number(r.gst_amount || 0);
+
+      totalValue += value;
+      totalGST += gst;
+
+      if (r.status === "Received") {
+        receivedCount++;
+        totalReceivedValue += value;
+      } else {
+        notReceivedCount++;
+        totalNotReceivedValue += value;
+      }
+    });
+
+    return {
+      receivedCount,
+      notReceivedCount,
+      totalValue,
+      totalReceivedValue,
+      totalNotReceivedValue,
+      totalGST,
+    };
+  }, [mergedIncome]);
 
   // ---------- Build merged EXPENSES (Actual + Forecast) ----------
-  // const mergedExpenses = useMemo(() => {
-  //   if (!monthDetails) return [];
+  const mergedExpenses = useMemo(() => {
+    if (!monthDetails) return [];
 
-  //   const actual = monthDetails.actualExpenseItems || [];
-  //   const forecast = monthDetails.forecastExpenseItems || [];
+    const actual = monthDetails.actualExpenseItems || [];      // actual paid rows (from backend)
+    const forecast = monthDetails.forecastExpenseItems || [];  // forecast / expected rows (from backend)
 
-  //   return forecast.map((f) => {
-  //     // 1) try matching by expense_id (best)
-  //     let match =
-  //       (f.expense_id && actual.find((a) => a.expense_id === f.expense_id)) ||
-  //       // 2) try matching by paid_date / month heuristics (if expense ids absent)
-  //       actual.find((a) => {
-  //         const aType = (a.expense_type || "").trim().toLowerCase();
-  //         const fType = (f.type || "").trim().toLowerCase();
-  //         return aType === fType;
-  //       });
-
-  //     // Build merged record (prefer actual values where available)
-  //     return {
-  //       ...f,
-  //       // ensure we always expose regular/status/paid fields
-  //       regular: match?.regular ?? f.regular ?? "No",
-  //       paid_amount: match?.paid_amount ?? f.paid_amount ?? 0,
-  //       paid_date: match?.paid_date ?? f.paid_date ?? null,
-  //       status: match ? (match.status || "Paid") : (f.status || "Not Paid"),
-  //       // keep original forecast amount as `amount`, and actual amount (if any) as actual_amount
-  //       actual_amount: match?.amount ?? match?.paid_amount ?? 0,
-  //     };
-  //   });
-  // }, [monthDetails]);
-// ---------- Build merged EXPENSES (Actual + Forecast) ----------
-const mergedExpenses = useMemo(() => {
-  if (!monthDetails) return [];
-
-  const actual = monthDetails.actualExpenseItems || [];      // actual paid rows (from backend)
-  const forecast = monthDetails.forecastExpenseItems || [];  // forecast / expected rows (from backend)
-
-  // map actual payments by expense_id for quick lookup
-  const actualById = new Map();
-  actual.forEach(a => {
-    if (a.expense_id != null) actualById.set(String(a.expense_id), a);
-  });
-
-  // also index actual rows by type+amount as a fallback (helps when expense_id not present)
-  const actualByTypeAmount = {};
-  actual.forEach(a => {
-    const key = `${String(a.expense_type || a.type || "").trim().toLowerCase()}|${Number(a.amount || a.paid_amount || 0)}`;
-    (actualByTypeAmount[key] ||= []).push(a);
-  });
-
-  const merged = [];
-
-  // 1) Add ALL forecast rows (no collapsing). If there's a matching actual by id -> merge paid info
-  forecast.forEach(f => {
-    const fid = f.expense_id != null ? String(f.expense_id) : null;
-
-    // try expense_id match
-    let match = fid ? actualById.get(fid) : undefined;
-
-    // fallback: try by type+amount (some actual rows may lack expense_id)
-    if (!match) {
-      const key = `${String(f.type || "").trim().toLowerCase()}|${Number(f.amount || f.paid_amount || 0)}`;
-      const list = actualByTypeAmount[key] || [];
-      match = list.length ? list[0] : undefined;
-    }
-
-    // Decide paid_amount and paid_date sensibly: prefer actual values, else keep forecast (if any)
-    const paidAmount = match?.paid_amount ?? match?.amount ?? f.paid_amount ?? 0;
-    let paidDate = match?.paid_date ?? f.paid_date ?? null;
-    // if paid_date missing but a month reference exists on actual, use a month-year fallback (not a real date)
-    if (!paidDate && match?.month_year) {
-      // store as ISO-like day for display (frontend formatting will show only date part)
-      paidDate = `${String(match.month_year).slice(0,7)}-01`;
-    }
-    // status: if actual shows paid_amount > 0 or match.status indicates paid, mark Paid
-    const statusFromMatch = match?.status ? String(match.status).trim().toLowerCase() : null;
-    const status = (paidAmount && Number(paidAmount) > 0) || statusFromMatch === "paid" || statusFromMatch === "yes"
-      ? "Paid"
-      : (f.status || "Not Paid");
-
-    merged.push({
-      expense_id: f.expense_id,
-      type: f.type,
-      description: f.description,
-      regular: f.regular ?? f.regular ?? "No",
-      amount: Number(f.amount ?? f.paid_amount ?? 0),
-      paid_amount: Number(paidAmount || 0),
-      paid_date: paidDate ?? null,
-      status,
-      actual_amount: match ? (match.amount ?? match.paid_amount ?? 0) : 0,
-      _source: match ? "forecast+actual" : "forecast-only",
+    // map actual payments by expense_id for quick lookup
+    const actualById = new Map();
+    actual.forEach(a => {
+      if (a.expense_id != null) actualById.set(String(a.expense_id), a);
     });
-  });
 
-  // 2) Append any actual-only rows that were not in forecast (show them too)
-  actual.forEach(a => {
-    const exists = merged.some(m =>
-      m.expense_id != null && a.expense_id != null && String(m.expense_id) === String(a.expense_id)
-    );
+    // also index actual rows by type+amount as a fallback (helps when expense_id not present)
+    const actualByTypeAmount = {};
+    actual.forEach(a => {
+      const key = `${String(a.expense_type || a.type || "").trim().toLowerCase()}|${Number(a.amount || a.paid_amount || 0)}`;
+      (actualByTypeAmount[key] ||= []).push(a);
+    });
 
-    if (!exists) {
-      // normalize paid_date similarly
-      let paidDate = a.paid_date ?? null;
-      if (!paidDate && a.month_year) paidDate = `${String(a.month_year).slice(0,7)}-01`;
+    const merged = [];
+
+    // 1) Add ALL forecast rows (no collapsing). If there's a matching actual by id -> merge paid info
+    forecast.forEach(f => {
+      const fid = f.expense_id != null ? String(f.expense_id) : null;
+
+      // try expense_id match
+      let match = fid ? actualById.get(fid) : undefined;
+
+      // fallback: try by type+amount (some actual rows may lack expense_id)
+      if (!match) {
+        const key = `${String(f.type || "").trim().toLowerCase()}|${Number(f.amount || f.paid_amount || 0)}`;
+        const list = actualByTypeAmount[key] || [];
+        match = list.length ? list[0] : undefined;
+      }
+
+      // Decide paid_amount and paid_date sensibly: prefer actual values, else keep forecast (if any)
+      const paidAmount = match?.paid_amount ?? match?.amount ?? f.paid_amount ?? 0;
+      let paidDate = match?.paid_date ?? f.paid_date ?? null;
+      // if paid_date missing but a month reference exists on actual, use a month-year fallback (not a real date)
+      if (!paidDate && match?.month_year) {
+        // store as ISO-like day for display (frontend formatting will show only date part)
+        paidDate = `${String(match.month_year).slice(0,7)}-01`;
+      }
+      // status: if actual shows paid_amount > 0 or match.status indicates paid, mark Paid
+      const statusFromMatch = match?.status ? String(match.status).trim().toLowerCase() : null;
+      const status = (paidAmount && Number(paidAmount) > 0) || statusFromMatch === "paid" || statusFromMatch === "yes"
+        ? "Paid"
+        : (f.status || "Not Paid");
 
       merged.push({
-        expense_id: a.expense_id,
-        type: a.expense_type || a.type || "Other",
-        description: a.description,
-        regular: a.regular ?? "No",
-        amount: Number(a.amount ?? a.paid_amount ?? 0),
-        paid_amount: Number(a.paid_amount ?? a.actual_amount ?? 0),
-        paid_date: paidDate,
-        status: a.status ?? (Number(a.paid_amount ?? a.amount ?? 0) > 0 ? "Paid" : "Not Paid"),
-        actual_amount: Number(a.amount ?? a.paid_amount ?? 0),
-        _source: "actual-only",
+        expense_id: f.expense_id,
+        type: f.type,
+        description: f.description,
+        regular: f.regular ?? f.regular ?? "No",
+        amount: Number(f.amount ?? f.paid_amount ?? 0),
+        paid_amount: Number(paidAmount || 0),
+        paid_date: paidDate ?? null,
+        status,
+        actual_amount: match ? (match.amount ?? match.paid_amount ?? 0) : 0,
+        _source: match ? "forecast+actual" : "forecast-only",
+        // include due_date from forecast row if present (forecast rows already set due_date in backend)
+        due_date: f.due_date ?? null,
       });
-    }
-  });
+    });
 
-  // preserve order: keep forecast order first, actual-only appended — this matches your backend grouping
-  return merged;
-}, [monthDetails]);
+    // 2) Append any actual-only rows that were not in forecast (show them too)
+    actual.forEach(a => {
+      const exists = merged.some(m =>
+        m.expense_id != null && a.expense_id != null && String(m.expense_id) === String(a.expense_id)
+      );
+
+      if (!exists) {
+        // normalize paid_date similarly
+        let paidDate = a.paid_date ?? null;
+        if (!paidDate && a.month_year) paidDate = `${String(a.month_year).slice(0,7)}-01`;
+
+        merged.push({
+          expense_id: a.expense_id,
+          type: a.expense_type || a.type || "Other",
+          description: a.description,
+          regular: a.regular ?? "No",
+          amount: Number(a.amount ?? a.paid_amount ?? 0),
+          paid_amount: Number(a.paid_amount ?? a.actual_amount ?? 0),
+          paid_date: paidDate,
+          status: a.status ?? (Number(a.paid_amount ?? a.amount ?? 0) > 0 ? "Paid" : "Not Paid"),
+          actual_amount: Number(a.amount ?? a.paid_amount ?? 0),
+          _source: "actual-only",
+          due_date: a.due_date ?? null,
+        });
+      }
+    });
+
+    // preserve order: keep forecast order first, actual-only appended — this matches your backend grouping
+    return merged;
+  }, [monthDetails]);
 
   // CATEGORY DETECTION (Salary, PF, TDS, PT, Insurance)
   const MAIN = ["Salary", "PF", "Insurance", "PT", "TDS"];
@@ -457,7 +399,8 @@ const mergedExpenses = useMemo(() => {
   const { categoryTotals, grandTotalExpenses } = useMemo(() => {
     const totals = {};
 
-    mergedExpenses.forEach((exp) => {
+    // mergedExpenses may be null/undefined while loading — guard it
+    (mergedExpenses || []).forEach((exp) => {
       const cat = getCategory(exp.type);
       if (!totals[cat]) totals[cat] = 0;
 
@@ -469,6 +412,39 @@ const mergedExpenses = useMemo(() => {
     return {
       categoryTotals: totals,
       grandTotalExpenses: Object.values(totals).reduce((a, b) => a + b, 0),
+    };
+  }, [mergedExpenses]);
+
+  const expenseSummary = useMemo(() => {
+    if (!mergedExpenses) return null;
+
+    let paidCount = 0;
+    let notPaidCount = 0;
+
+    let totalExpense = 0;
+    let totalPaidAmount = 0;
+    let totalNotPaidAmount = 0;
+
+    mergedExpenses.forEach((exp) => {
+      const amount = Number(exp.amount || 0);
+
+      totalExpense += amount;
+
+      if (exp.status === "Paid") {
+        paidCount++;
+        totalPaidAmount += amount;
+      } else {
+        notPaidCount++;
+        totalNotPaidAmount += amount;
+      }
+    });
+
+    return {
+      paidCount,
+      notPaidCount,
+      totalExpense,
+      totalPaidAmount,
+      totalNotPaidAmount,
     };
   }, [mergedExpenses]);
 
@@ -511,6 +487,16 @@ const mergedExpenses = useMemo(() => {
     fontSize: "1.1rem",
     marginTop: 4,
     fontWeight: 700,
+  };
+
+  // safe date formatting helper
+  const fmtDate = (d) => {
+    if (!d) return "-";
+    try {
+      return new Date(d).toLocaleDateString("en-GB").replaceAll("/", "-");
+    } catch {
+      return d;
+    }
   };
 
   return (
@@ -633,8 +619,7 @@ const mergedExpenses = useMemo(() => {
                     }}
                     onClick={() => {
                       setSelectedMonth(row.month);
-                      // make sure monthDetails reacts to selectedMonth before rendering dialog content
-                      // this micro-task scheduling avoids a single-render race where monthDetails is still null
+                      // ensure monthDetails is available before dialog renders content
                       setTimeout(() => setDialogOpen(true), 0);
                     }}
                   >
@@ -670,51 +655,318 @@ const mergedExpenses = useMemo(() => {
         </DialogTitle>
 
         <DialogContent dividers>
+          {/* Summary Top Box */}
+          <Box sx={{ width: "50%" }}>
+            {incomeSummary && (
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gap: 1.5,
+                  mb: 2,
+                }}
+              >
+                {/* Received */}
+                <Box
+                  sx={{
+                    p: 1.2,
+                    borderRadius: 1.5,
+                    bgcolor: "#e8f5e9",
+                    textAlign: "center",
+                  }}
+                >
+                  <h5 style={{ margin: 0, color: "green", fontSize: "13px", marginBottom: "4px" }}>
+                    ✔ Received
+                  </h5>
+
+                  <table
+                    style={{
+                      width: "100%",
+                      fontSize: "12px",
+                      borderCollapse: "collapse",
+                    }}
+                  >
+                    <tbody>
+                      <tr>
+                        <td style={{ textAlign: "left", padding: "2px 4px" }}>Count</td>
+                        <td style={{ textAlign: "right", fontWeight: 700 }}>
+                          {incomeSummary.receivedCount}
+                        </td>
+                      </tr>
+
+                      <tr>
+                        <td style={{ textAlign: "left", padding: "2px 4px" }}>Amount</td>
+                        <td style={{ textAlign: "right", fontWeight: 700 }}>
+                          {currency(incomeSummary.totalReceivedValue)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </Box>
+
+                {/* Not Received */}
+                <Box
+                  sx={{
+                    p: 1.2,
+                    borderRadius: 1.5,
+                    bgcolor: "#ffebee",
+                    textAlign: "center",
+                  }}
+                >
+                  <h5 style={{ margin: 0, color: "red", fontSize: "13px", marginBottom: "4px" }}>
+                    ✖ Not Received
+                  </h5>
+
+                  <table
+                    style={{
+                      width: "100%",
+                      fontSize: "12px",
+                      borderCollapse: "collapse",
+                    }}
+                  >
+                    <tbody>
+                      <tr>
+                        <td style={{ textAlign: "left", padding: "2px 4px" }}>Count</td>
+                        <td style={{ textAlign: "right", fontWeight: 700 }}>
+                          {incomeSummary.notReceivedCount}
+                        </td>
+                      </tr>
+
+                      <tr>
+                        <td style={{ textAlign: "left", padding: "2px 4px" }}>Amount</td>
+                        <td style={{ textAlign: "right", fontWeight: 700 }}>
+                          {currency(incomeSummary.totalNotReceivedValue)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </Box>
+
+                {/* Total */}
+                <Box
+                  sx={{
+                    p: 1.2,
+                    borderRadius: 1.5,
+                    bgcolor: "#e3f2fd",
+                    textAlign: "center",
+                  }}
+                >
+                  <h5 style={{ margin: 0, fontSize: "13px", marginBottom: "4px" }}>Total Value</h5>
+
+                  <table
+                    style={{
+                      width: "100%",
+                      fontSize: "12px",
+                      borderCollapse: "collapse",
+                      marginTop: "4px",
+                    }}
+                  >
+                    <tbody>
+                      <tr>
+                        <td style={{ textAlign: "left", padding: "2px 4px" }}>Total</td>
+                        <td style={{ textAlign: "right", fontWeight: 600 }}>
+                          {currency(incomeSummary.totalValue)}
+                        </td>
+                      </tr>
+
+                      <tr>
+                        <td style={{ textAlign: "left", padding: "2px 4px" }}>GST</td>
+                        <td style={{ textAlign: "right", fontWeight: 600 }}>
+                          - {currency(incomeSummary.totalGST)}
+                        </td>
+                      </tr>
+
+                      <tr>
+                        <td
+                          style={{
+                            textAlign: "left",
+                            padding: "2px 4px",
+                            fontWeight: 700,
+                            borderTop: "1px solid #c3d5f5",
+                          }}
+                        >
+                          Final
+                        </td>
+                        <td
+                          style={{
+                            textAlign: "right",
+                            fontWeight: 700,
+                            borderTop: "1px solid #c3d5f5",
+                          }}
+                        >
+                          {currency(incomeSummary.totalValue - incomeSummary.totalGST)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </Box>
+              </Box>
+            )}
+          </Box>
+
           {monthDetails && (
             <>
               {/* =======================
                  INCOME OVERVIEW TABLE
               ======================== */}
-              {/* =======================
-   INCOME OVERVIEW (Single table: Not Received + Received)
-======================== */}
-<SectionTable
-  title={`Income — ${formatMonthLabel(selectedMonth)}`}
-  columns={[
-    { header: "Project", render: (r) => r.projectName || r.project_id || "-" },
-    { header: "Invoice No", render: (r) => r.invoice_number || "-" },
-    { header: "Value (₹)", render: (r) => currency(r.invoice_value || r.amount || r.total_with_gst) },
-    { header: "GST (₹)", render: (r) => currency(r.gst_amount || 0) },
-    {
-      header: "Received Date",
-      render: (r) =>
-        r.status === "Received"
-          ? r.received_date
-            ? new Date(r.received_date).toLocaleDateString("en-GB")
-            : "-"
-          : r.due_date
-          ? new Date(r.due_date).toLocaleDateString("en-GB")
-          : "-",
-    },
-    {
-      header: "Status",
-      render: (r) =>
-        r.status === "Received" ? (
-          <span style={{ color: "green", fontWeight: 700 }}>✔ Received</span>
-        ) : (
-          <span style={{ color: "orange", fontWeight: 700 }}>⏳ Not Received</span>
-        ),
-    },
-  ]}
-  rows={mergedIncome}
-/>
+              <SectionTable
+                title={`Income — ${formatMonthLabel(selectedMonth)}`}
+                columns={[
+                  { header: "Project", render: (r) => r.projectName || r.project_id || "-" },
+                  { header: "Invoice No", render: (r) => r.invoice_number || "-" },
+                  { header: "Value (₹)", render: (r) => currency(r.invoice_value || r.amount || r.total_with_gst) },
+                  { header: "GST (₹)", render: (r) => currency(r.gst_amount || 0) },
+                  {
+                    header: "Received Date",
+                    render: (r) =>
+                      r.status === "Received"
+                        ? r.received_date
+                          ? new Date(r.received_date).toLocaleDateString("en-GB")
+                          : "-"
+                        : r.due_date
+                        ? new Date(r.due_date).toLocaleDateString("en-GB")
+                        : "-",
+                  },
+                  {
+                    header: "Status",
+                    render: (r) =>
+                      r.status === "Received" ? (
+                        <span style={{ color: "green", fontWeight: 700 }}>✔ Received</span>
+                      ) : (
+                        <span style={{ color: "orange", fontWeight: 700 }}>⏳ Not Received</span>
+                      ),
+                  },
+                ]}
+                rows={mergedIncome}
+              />
 
+              <Divider>Expenses</Divider>
 
               {/* =======================
                   EXPENSES OVERVIEW SECTION
               ======================== */}
-              <div style={{ display: "flex", gap: "20px", marginTop: "30px" }}>
+              <Box sx={{ width: "50%" }}>
+                {expenseSummary && (
+                  <Box
+                    sx={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3, 1fr)",
+                      gap: 1.5,
+                      mb: 2,
+                      mt: 2,
+                    }}
+                  >
+                    {/* PAID */}
+                    <Box
+                      sx={{
+                        p: 1.2,
+                        borderRadius: 1.5,
+                        bgcolor: "#e8f5e9",
+                        textAlign: "center",
+                      }}
+                    >
+                      <h5 style={{ margin: 0, color: "green", fontSize: "13px", marginBottom: "4px" }}>
+                        ✔ Paid
+                      </h5>
 
+                      <table
+                        style={{
+                          width: "100%",
+                          fontSize: "12px",
+                          borderCollapse: "collapse",
+                        }}
+                      >
+                        <tbody>
+                          <tr>
+                            <td style={{ textAlign: "left", padding: "2px 4px" }}>Count</td>
+                            <td style={{ textAlign: "right", fontWeight: 700 }}>
+                              {expenseSummary.paidCount}
+                            </td>
+                          </tr>
+
+                          <tr>
+                            <td style={{ textAlign: "left", padding: "2px 4px" }}>Amount</td>
+                            <td style={{ textAlign: "right", fontWeight: 700 }}>
+                              {currency(expenseSummary.totalPaidAmount)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </Box>
+
+                    {/* NOT PAID */}
+                    <Box
+                      sx={{
+                        p: 1.2,
+                        borderRadius: 1.5,
+                        bgcolor: "#ffebee",
+                        textAlign: "center",
+                      }}
+                    >
+                      <h5 style={{ margin: 0, color: "red", fontSize: "13px", marginBottom: "4px" }}>
+                        ✖ Not Paid
+                      </h5>
+
+                      <table
+                        style={{
+                          width: "100%",
+                          fontSize: "12px",
+                          borderCollapse: "collapse",
+                        }}
+                      >
+                        <tbody>
+                          <tr>
+                            <td style={{ textAlign: "left", padding: "2px 4px" }}>Count</td>
+                            <td style={{ textAlign: "right", fontWeight: 700 }}>
+                              {expenseSummary.notPaidCount}
+                            </td>
+                          </tr>
+
+                          <tr>
+                            <td style={{ textAlign: "left", padding: "2px 4px" }}>Amount</td>
+                            <td style={{ textAlign: "right", fontWeight: 700 }}>
+                              {currency(expenseSummary.totalNotPaidAmount)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </Box>
+
+                    {/* TOTAL EXPENSE */}
+                    <Box
+                      sx={{
+                        p: 1.2,
+                        borderRadius: 1.5,
+                        bgcolor: "#e3f2fd",
+                        textAlign: "center",
+                      }}
+                    >
+                      <h5 style={{ margin: 0, fontSize: "13px", marginBottom: "4px" }}>
+                        Total Expenses
+                      </h5>
+
+                      <table
+                        style={{
+                          width: "100%",
+                          fontSize: "12px",
+                          borderCollapse: "collapse",
+                        }}
+                      >
+                        <tbody>
+                          <tr>
+                            <td style={{ textAlign: "left", padding: "2px 4px" }}>Total</td>
+                            <td style={{ textAlign: "right", fontWeight: 700 }}>
+                              {currency(expenseSummary.totalExpense)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </Box>
+                  </Box>
+                )}
+              </Box>
+
+              <div style={{ display: "flex", gap: "20px", marginTop: "30px" }}>
                 {/* LEFT — CATEGORY TOTALS */}
                 <div style={{ width: "28%" }}>
                   <TableContainer
@@ -728,8 +980,6 @@ const mergedExpenses = useMemo(() => {
                     }}
                   >
                     <Table stickyHeader>
-
-                      {/* TOTAL */}
                       <TableHead>
                         <TableRow style={{ backgroundColor: "#f0f2ff" }}>
                           <TableCell
@@ -832,7 +1082,8 @@ const mergedExpenses = useMemo(() => {
                           <TableCell>Regular</TableCell>
                           <TableCell>Type</TableCell>
                           <TableCell>Amount</TableCell>
-                          <TableCell>Paid Amount</TableCell>
+                          <TableCell>Paid Amount</TableCell> {/* restored */}
+                          <TableCell>Due Date</TableCell>
                           <TableCell>Status</TableCell>
                           <TableCell>Paid Date</TableCell>
                         </TableRow>
@@ -875,7 +1126,11 @@ const mergedExpenses = useMemo(() => {
 
                               <TableCell>{currency(exp.amount)}</TableCell>
 
-                              <TableCell>{currency(exp.paid_amount)}</TableCell>
+                              {/* Paid Amount (shows payments joined from expense_payments) */}
+                              <TableCell>{currency(exp.paid_amount ?? exp.actual_amount ?? 0)}</TableCell>
+
+                              {/* Due date shown as date, not currency */}
+                              <TableCell>{fmtDate(exp.due_date)}</TableCell>
 
                               <TableCell
                                 style={{
@@ -888,11 +1143,7 @@ const mergedExpenses = useMemo(() => {
                               </TableCell>
 
                               <TableCell>
-                                {exp.paid_date
-                                  ? new Date(exp.paid_date)
-                                      .toLocaleDateString("en-GB")
-                                      .replaceAll("/", "-")
-                                  : "-"}
+                                {exp.paid_date ? fmtDate(exp.paid_date) : "-"}
                               </TableCell>
                             </TableRow>
                           ))}
