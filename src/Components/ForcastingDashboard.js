@@ -19,8 +19,8 @@ import {
   Typography,
   IconButton,
   Divider,
+  CircularProgress,
 } from "@mui/material";
-
 import SearchIcon from "@mui/icons-material/Search";
 import CloseIcon from "@mui/icons-material/Close";
 import "dayjs/locale/en-gb";
@@ -183,7 +183,7 @@ const [appliedStart, setAppliedStart] = useState(null);
 const [appliedEnd, setAppliedEnd] = useState(null);
 const [incomeStatusFilter, setIncomeStatusFilter] = useState("All");
 const [expenseStatusFilter, setExpenseStatusFilter] = useState("All");
-
+const [loadingDialog, setLoadingDialog] = useState(false);
   // Date range state for dialog filter (two DatePickers)
   const [rangeStart, setRangeStart] = useState(null); // dayjs
   const [rangeEnd, setRangeEnd] = useState(null); // dayjs
@@ -221,6 +221,7 @@ const [expenseStatusFilter, setExpenseStatusFilter] = useState("All");
         setSummary(s);
         setFiltered(s);
          console.log(data);
+        console.log(data);
       }
     } catch (err) {
       console.error("fetchForecast error", err);
@@ -246,11 +247,12 @@ const [expenseStatusFilter, setExpenseStatusFilter] = useState("All");
 
       const lastBalance = res.data.data?.[0]?.updated_balance || 0;
       setMonthlyAccBalance(lastBalance);
-
+      
       const out = summary.filter(
         (s) => s.month >= fromMonth && s.month <= toMonth
       );
       setFiltered(out);
+      console.log(filtered);
     } catch (err) {
       console.error(err);
       alert("Failed to fetch balance");
@@ -471,6 +473,91 @@ const mergedExpenses = useMemo(() => {
 
   return merged;
 }, [monthDetails]);
+// const mergedExpenses = useMemo(() => {
+//   if (!monthDetails) return [];
+
+//   const actual = monthDetails.actualExpenseItems || [];
+//   const forecast = monthDetails.forecastExpenseItems || [];
+
+//   // STEP 1 — Normalize formats
+//   const normalize = (date) => {
+//     if (!date) return null;
+//     try {
+//       return date.slice(0, 10); // YYYY-MM-DD
+//     } catch {
+//       return null;
+//     }
+//   };
+
+//   // STEP 2 — Create Paid Map: (expenseId + month)
+//   const paidMap = {};
+//   actual.forEach(item => {
+//     const paidDate = normalize(item.paid_date);
+//     if (!paidDate) return;
+
+//     const paidMonth = paidDate.slice(0, 7); // YYYY-MM
+//     const key = `${item.expense_id}_${paidMonth}`;
+
+//     paidMap[key] = {
+//       paid_amount: item.paid_amount,
+//       paid_date: item.paid_date,
+//       status: "Paid",
+//     };
+//   });
+
+//   // STEP 3 — Merge with forecast
+//   return forecast.map(f => {
+//     const effDate = normalize(f.effective_due_date);
+//     const forecastMonth = effDate ? effDate.slice(0, 7) : "";
+
+//     const key = `${f.expense_id}_${forecastMonth}`;
+//     const paid = paidMap[key];
+
+//     if (paid) {
+//       console.log("MATCH FOUND:", key, paid);
+//       return {
+//         ...f,
+//         status: "Paid",
+//         paid_amount: paid.paid_amount,
+//         paid_date: paid.paid_date,
+//       };
+//     }
+// console.log("🎯 DEBUG START ------------------");
+
+// console.log("FORECAST ITEMS:");
+// forecast.forEach(f => {
+//   console.log({
+//     expense_id: f.expense_id,
+//     effective_due_date: f.effective_due_date,
+//     forecast_month: f.effective_due_date?.slice(0, 7)
+//   });
+// });
+
+// console.log("ACTUAL PAID ITEMS:");
+// actual.forEach(a => {
+//   console.log({
+//     expense_id: a.expense_id,
+//     paid_date: a.paid_date,
+//     paid_month: a.paid_date?.slice(0, 7),
+//     paid_amount: a.paid_amount,
+//     status: a.status
+//   });
+// });
+
+// console.log("🎯 DEBUG END ------------------");
+
+//     return {
+//       ...f,
+//       status: "Unpaid",
+//       paid_amount: 0,
+//       paid_date: null,
+//     };
+//   });
+// }, [monthDetails]);
+
+
+
+
 
   // CATEGORY DETECTION (Salary, PF, TDS, PT, Insurance)
   const MAIN = ["Salary", "PF", "Insurance", "PT", "TDS"];
@@ -845,22 +932,32 @@ const filteredExpenses = useMemo(() => {
                 <TableCell>{currency(row.accountBalance)}</TableCell>
 
                 <TableCell>
-                  <Button
-                    size="small"
-                    variant="contained"
-                    style={{
-                      backgroundColor: "#1e40af",
-                      color: "white",
-                      borderRadius: 6,
-                      textTransform: "none",
-                    }}
-                    onClick={() => {
-                      setSelectedMonth(row.month);
-                      setDialogOpen(true);
-                    }}
-                  >
-                    View
-                  </Button>
+                 <Button
+  size="small"
+  variant="contained"
+  style={{
+    backgroundColor: "#1e40af",
+    color: "white",
+    borderRadius: 6,
+    textTransform: "none",
+  }}
+  onClick={async () => {
+    setLoadingDialog(true);  // show loader
+    setDialogOpen(true);     // open dialog immediately
+
+    await new Promise((res) => setTimeout(res, 600)); // small delay (optional)
+
+    setSelectedMonth(row.month);
+
+    // 🔥 fetch data if needed OR just set state
+    // setMonthDetails(row);
+
+    setLoadingDialog(false); // remove loader & show content
+  }}
+>
+  View
+</Button>
+
                 </TableCell>
               </TableRow>
             ))}
@@ -869,329 +966,292 @@ const filteredExpenses = useMemo(() => {
       </Paper>
 
       {/* ===================== DIALOG BEGINS ===================== */}
-      <Dialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        fullWidth
-        maxWidth="xl"
+
+<Dialog
+  open={dialogOpen}
+  onClose={() => setDialogOpen(false)}
+  fullWidth
+  maxWidth="xl"
+>
+  <DialogTitle>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        fontWeight: 700,
+      }}
+    >
+      <span>Details — {formatMonthLabel(selectedMonth)}</span>
+      <IconButton onClick={() => setDialogOpen(false)}>
+        <CloseIcon />
+      </IconButton>
+    </div>
+  </DialogTitle>
+
+  {/* ======================================================
+      DIALOG CONTENT WITH FULL SCREEN LOADER OVERLAY
+     ====================================================== */}
+  <DialogContent dividers sx={{ position: "relative", minHeight: "520px" }}>
+
+    {/* ---------------- LOADING OVERLAY (CENTERED) ---------------- */}
+    {loadingDialog && (
+      <Box
+        sx={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          background: "rgba(255,255,255,0.8)",
+          backdropFilter: "blur(3px)",
+          zIndex: 20,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+        }}
       >
-        <DialogTitle>
-          <div
-            style={{
+        <CircularProgress size={60} thickness={4} />
+        <Typography sx={{ mt: 2, fontWeight: 600, color: "#1e40af" }}>
+          Processing data…
+        </Typography>
+      </Box>
+    )}
+
+    {/* ---------------- ACTUAL CONTENT (HIDDEN WHEN LOADING) ---------------- */}
+    {!loadingDialog && (
+      <>
+
+        {/* =========================== DATE FILTER UI =========================== */}
+        <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="en-gb">
+          <Box
+            sx={{
               display: "flex",
-              justifyContent: "space-between",
-              fontWeight: 700,
+              alignItems: "center",
+              gap: 3,
+              p: 2,
+              mb: 3,
+              borderRadius: 2,
+              background: "linear-gradient(90deg, #eef2ff, #f5f3ff)",
             }}
           >
-            <span>Details — {formatMonthLabel(selectedMonth)}</span>
-            <IconButton onClick={() => setDialogOpen(false)}>
-              <CloseIcon />
-            </IconButton>
-          </div>
-        </DialogTitle>
+            <Typography sx={{ fontWeight: 700, color: "#3730a3" }}>
+              Filter By Date:
+            </Typography>
 
-        <DialogContent dividers>
-          {/* ===========================
-              DATE RANGE FILTER (Beautiful)
-          =========================== */}
-            <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="en-gb">
-           <Box
-  sx={{
-    display: "flex",
-    alignItems: "center",
-    gap: 3,
-    p: 2,
-    mb: 3,
-    borderRadius: 2,
-    background: "linear-gradient(90deg, #eef2ff, #f5f3ff)",
-  }}
->
-  <Typography sx={{ fontWeight: 700, color: "#3730a3" }}>
-    Filter By Date:
-  </Typography>
+            {/* FROM DATE */}
+            <DatePicker
+              label="From"
+              value={rangeStart}
+              minDate={dayjs(selectedMonth + "-01").startOf("month")}
+              maxDate={dayjs(selectedMonth + "-01").endOf("month")}
+              onChange={(newValue) =>
+                setRangeStart(newValue ? dayjs(newValue).startOf("day") : null)
+              }
+              slotProps={{
+                textField: {
+                  size: "small",
+                  sx: { minWidth: 170 },
+                },
+              }}
+            />
 
-  {/* FROM DATE */}
-  <DatePicker
-    label="From"
-    value={rangeStart}
-    minDate={dayjs(selectedMonth + "-01").startOf("month")}
-    maxDate={dayjs(selectedMonth + "-01").endOf("month")}
-    onChange={(newValue) =>
-      setRangeStart(newValue ? dayjs(newValue).startOf("day") : null)
-    }
-    slotProps={{
-      textField: {
-        size: "small",
-        sx: { minWidth: 170 },
-      },
-    }}
-  />
+            {/* TO DATE */}
+            <DatePicker
+              label="To"
+              value={rangeEnd}
+              minDate={dayjs(selectedMonth + "-01").startOf("month")}
+              maxDate={dayjs(selectedMonth + "-01").endOf("month")}
+              onChange={(newValue) =>
+                setRangeEnd(newValue ? dayjs(newValue).endOf("day") : null)
+              }
+              slotProps={{
+                textField: {
+                  size: "small",
+                  sx: { minWidth: 170 },
+                },
+              }}
+            />
 
-  {/* TO DATE */}
-  <DatePicker
-    label="To"
-    value={rangeEnd}
-    minDate={dayjs(selectedMonth + "-01").startOf("month")}
-    maxDate={dayjs(selectedMonth + "-01").endOf("month")}
-    onChange={(newValue) =>
-      setRangeEnd(newValue ? dayjs(newValue).endOf("day") : null)
-    }
-    slotProps={{
-      textField: {
-        size: "small",
-        sx: { minWidth: 170 },
-      },
-    }}
-  />
+            {/* SEARCH BUTTON */}
+            <Button
+              variant="contained"
+              sx={{
+                bgcolor: "#4338ca",
+                textTransform: "none",
+                px: 3,
+                py: 1,
+                borderRadius: 2,
+                fontWeight: 700,
+                ":hover": { bgcolor: "#3730a3" },
+              }}
+              onClick={() => {
+                setAppliedStart(rangeStart);
+                setAppliedEnd(rangeEnd);
+              }}
+            >
+              Search
+            </Button>
+          </Box>
+        </LocalizationProvider>
 
-  {/* SEARCH BUTTON */}
-  <Button
-    variant="contained"
-    sx={{
-      bgcolor: "#4338ca",
-      textTransform: "none",
-      px: 3,
-      py: 1,
-      borderRadius: 2,
-      fontWeight: 700,
-      ":hover": { bgcolor: "#3730a3" },
-    }}
-    onClick={() => {
-      setAppliedStart(rangeStart);
-      setAppliedEnd(rangeEnd);
-    }}
-  >
-    Search
-  </Button>
-</Box>
-
-          </LocalizationProvider>
-
-          {/* Summary Top Box (date-range) */}
-          <Box sx={{ width: "50%" }}>
-            {dateRangeIncomeSummary && (
+        {/* =========================== INCOME SUMMARY =========================== */}
+        <Box sx={{ width: "50%" }}>
+          {dateRangeIncomeSummary && (
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: 1.5,
+                mb: 2,
+              }}
+            >
+              {/* RECEIVED */}
               <Box
                 sx={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(3, 1fr)",
-                  gap: 1.5,
-                  mb: 2,
+                  p: 1.2,
+                  borderRadius: 1.5,
+                  bgcolor: "#e8f5e9",
+                  textAlign: "center",
                 }}
               >
-                {/* Received */}
-                <Box
-                  sx={{
-                    p: 1.2,
-                    borderRadius: 1.5,
-                    bgcolor: "#e8f5e9",
-                    textAlign: "center",
-                  }}
-                >
-                  <h5 style={{ margin: 0, color: "green", fontSize: "13px", marginBottom: "4px" }}>
-                    ✔ Received
-                  </h5>
-
-                  <table
-                    style={{
-                      width: "100%",
-                      fontSize: "12px",
-                      borderCollapse: "collapse",
-                    }}
-                  >
-                    <tbody>
-                      <tr>
-                        <td style={{ textAlign: "left", padding: "2px 4px" }}>Count</td>
-                        <td style={{ textAlign: "right", fontWeight: 700 }}>
-                          {dateRangeIncomeSummary.receivedCount}
-                        </td>
-                      </tr>
-
-                      <tr>
-                        <td style={{ textAlign: "left", padding: "2px 4px" }}>Amount</td>
-                        <td style={{ textAlign: "right", fontWeight: 700 }}>
-                          {currency(dateRangeIncomeSummary.totalReceivedValue)}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </Box>
-
-                {/* Not Received */}
-                <Box
-                  sx={{
-                    p: 1.2,
-                    borderRadius: 1.5,
-                    bgcolor: "#ffebee",
-                    textAlign: "center",
-                  }}
-                >
-                  <h5 style={{ margin: 0, color: "red", fontSize: "13px", marginBottom: "4px" }}>
-                    ✖ Not Received
-                  </h5>
-
-                  <table
-                    style={{
-                      width: "100%",
-                      fontSize: "12px",
-                      borderCollapse: "collapse",
-                    }}
-                  >
-                    <tbody>
-                      <tr>
-                        <td style={{ textAlign: "left", padding: "2px 4px" }}>Count</td>
-                        <td style={{ textAlign: "right", fontWeight: 700 }}>
-                          {dateRangeIncomeSummary.notReceivedCount}
-                        </td>
-                      </tr>
-
-                      <tr>
-                        <td style={{ textAlign: "left", padding: "2px 4px" }}>Amount</td>
-                        <td style={{ textAlign: "right", fontWeight: 700 }}>
-                          {currency(dateRangeIncomeSummary.totalNotReceivedValue)}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </Box>
-
-                {/* Total */}
-                <Box
-                  sx={{
-                    p: 1.2,
-                    borderRadius: 1.5,
-                    bgcolor: "#e3f2fd",
-                    textAlign: "center",
-                  }}
-                >
-                  <h5 style={{ margin: 0, fontSize: "13px", marginBottom: "4px" }}>Total Value</h5>
-
-                  <table
-                    style={{
-                      width: "100%",
-                      fontSize: "12px",
-                      borderCollapse: "collapse",
-                      marginTop: "4px",
-                    }}
-                  >
-                    <tbody>
-                      <tr>
-                        <td style={{ textAlign: "left", padding: "2px 4px" }}>Total</td>
-                        <td style={{ textAlign: "right", fontWeight: 600 }}>
-                          {currency(dateRangeIncomeSummary.totalValue)}
-                        </td>
-                      </tr>
-
-                      <tr>
-                        <td style={{ textAlign: "left", padding: "2px 4px" }}>GST</td>
-                        <td style={{ textAlign: "right", fontWeight: 600 }}>
-                          - {currency(dateRangeIncomeSummary.totalGST)}
-                        </td>
-                      </tr>
-
-                      <tr>
-                        <td
-                          style={{
-                            textAlign: "left",
-                            padding: "2px 4px",
-                            fontWeight: 700,
-                            borderTop: "1px solid #c3d5f5",
-                          }}
-                        >
-                          Final
-                        </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            fontWeight: 700,
-                            borderTop: "1px solid #c3d5f5",
-                          }}
-                        >
-                          {currency(dateRangeIncomeSummary.totalValue - dateRangeIncomeSummary.totalGST)}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </Box>
+                <h5 style={{ margin: 0, color: "green", fontSize: "13px" }}>
+                  ✔ Received
+                </h5>
+                <table style={{ width: "100%", fontSize: "12px" }}>
+                  <tbody>
+                    <tr>
+                      <td>Count</td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>
+                        {dateRangeIncomeSummary.receivedCount}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>Amount</td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>
+                        {currency(dateRangeIncomeSummary.totalReceivedValue)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </Box>
-            )}
-          </Box>
 
-          {monthDetails && (
+              {/* NOT RECEIVED */}
+              <Box
+                sx={{
+                  p: 1.2,
+                  borderRadius: 1.5,
+                  bgcolor: "#ffebee",
+                  textAlign: "center",
+                }}
+              >
+                <h5 style={{ margin: 0, color: "red", fontSize: "13px" }}>
+                  ✖ Not Received
+                </h5>
+                <table style={{ width: "100%", fontSize: "12px" }}>
+                  <tbody>
+                    <tr>
+                      <td>Count</td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>
+                        {dateRangeIncomeSummary.notReceivedCount}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>Amount</td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>
+                        {currency(dateRangeIncomeSummary.totalNotReceivedValue)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </Box>
+
+              {/* TOTAL */}
+              <Box
+                sx={{
+                  p: 1.2,
+                  borderRadius: 1.5,
+                  bgcolor: "#e3f2fd",
+                  textAlign: "center",
+                }}
+              >
+                <h5 style={{ margin: 0, fontSize: "13px" }}>Total</h5>
+                <table style={{ width: "100%", fontSize: "12px" }}>
+                  <tbody>
+                    <tr>
+                      <td>Total</td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>
+                        {currency(dateRangeIncomeSummary.totalValue)}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>GST</td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>
+                        - {currency(dateRangeIncomeSummary.totalGST)}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style={{ fontWeight: 700, borderTop: "1px solid #c3d5f5" }}>
+                        Final
+                      </td>
+                      <td
+                        style={{
+                          textAlign: "right",
+                          fontWeight: 700,
+                          borderTop: "1px solid #c3d5f5",
+                        }}
+                      >
+                        {currency(
+                          dateRangeIncomeSummary.totalValue -
+                            dateRangeIncomeSummary.totalGST
+                        )}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </Box>
+            </Box>
+          )}
+        </Box>
+
+        {/* =========================== INCOME TABLE =========================== */}
+        {monthDetails && (
             <>
               {/* =======================
-                 INCOME OVERVIEW TABLE (date filtered)
+                 INCOME OVERVIEW TABLE
               ======================== */}
-           <SectionTable
-  title={`Income — ${formatMonthLabel(selectedMonth)}`}
-  columns={[
-    { header: "Project", render: (r) => r.projectName || r.project_id || "-" },
-    { header: "Invoice No", render: (r) => r.invoice_number || "-" },
-    { header: "Value (₹)", render: (r) => currency(r.invoice_value || r.amount || r.total_with_gst) },
-    { header: "GST (₹)", render: (r) => currency(r.gst_amount || 0) },
-    {
-      header: "Date",
-      render: (r) =>
-        r.status === "Received"
-          ? r.received_date
-            ? new Date(r.received_date).toLocaleDateString("en-GB")
-            : "-"
-          : r.due_date
-          ? new Date(r.due_date).toLocaleDateString("en-GB")
-          : "-",
-    },
-    {
-      header: (
-        <Box sx={{ display: "flex", flexDirection: "column" }}>
-          <span>Status</span>
-          <select
-            value={incomeStatusFilter}
-            onChange={(e) => setIncomeStatusFilter(e.target.value)}
-            style={{
-              marginTop: 4,
-              padding: "2px 6px",
-              fontSize: "0.75rem",
-              borderRadius: 6,
-              border: "1px solid #ccc",
-            }}
-          >
-            <option value="All">All</option>
-            <option value="Received">Received</option>
-            <option value="Not Received">Not Received</option>
-          </select>
-        </Box>
-      ),
-      render: (r) =>
-        r.status === "Received" ? (
-          <span style={{ color: "green", fontWeight: 700 }}>✔ Received</span>
-        ) : (
-          <span style={{ color: "orange", fontWeight: 700 }}>⏳ Not Received</span>
-        ),
-    },
-  ]}
-  rows={filteredIncome}
-/>
+              <SectionTable
+                title="Income Overview (Actual + Forecast)"
+                columns={[
+                  { header: "Project", render: (r) => r.projectName || r.project_id },
+                  { header: "Invoice No", render: (r) => r.invoice_number },
+                  { header: "Value (₹)", render: (r) => currency(r.invoice_value || r.amount) },
+                  { header: "GST (₹)", render: (r) => currency(r.gst_amount) },
+                  {
+                    header: "Date",
+                    render: (r) =>
+                      r.received_date
+                        ? new Date(r.received_date).toLocaleDateString("en-GB")
+                        : r.due_date
+                        ? new Date(r.due_date).toLocaleDateString("en-GB")
+                        : "-",
+                  },
+                  {
+                    header: "Status",
+                    render: (r) =>
+                      r.status === "Received" ? (
+                        <span style={{ color: "green", fontWeight: 700 }}>✔ Received</span>
+                      ) : (
+                        <span style={{ color: "red", fontWeight: 700 }}>✖ Not Received</span>
+                      ),
+                  },
+                ]}
+                rows={mergedIncome}
+              />
 
 
-              <Divider> <div
-  style={{
-    display: "inline-block",
-    // padding: "8px 18px",
-    // background: "linear-gradient(90deg, #dbeafe, #eff6ff)",
-    borderRadius: "10px",
-    fontWeight: 700,
-    color: "#1e3a8a",
-    fontSize: "1.1rem",
-    boxShadow: "0 3px 6px rgba(0,0,0,0.08)",
-    marginTop: "4px",
-  }}
->
-  {`Expenses — ${formatMonthLabel(selectedMonth)}`}
-</div></Divider>
-
-              {/* =======================
-                  EXPENSES OVERVIEW SECTION (date filtered)
-              ======================== */}
-              <Box sx={{ width: "50%" }}>
+        {/* =========================== EXPENSES SUMMARY + TABLE =========================== */}
+        <Box sx={{ width: "50%" }}>
                             
 
                 {dateRangeExpenseSummary && (
@@ -1540,25 +1600,32 @@ const filteredExpenses = useMemo(() => {
                   </TableContainer>
                 </div>
               </div>
-            </>
-          )}
-        </DialogContent>
 
-        <DialogActions>
-          <Button
-            onClick={() => setDialogOpen(false)}
-            style={{
-              backgroundColor: "#1e3a8a",
-              color: "white",
-              borderRadius: 6,
-              textTransform: "none",
-              padding: "6px 20px",
-            }}
-          >
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
+      </>
+    )}
+      </>
+    )}
+
+  </DialogContent>
+  <DialogActions>
+    <Button
+      onClick={() => setDialogOpen(false)}
+      style={{
+        backgroundColor: "#1e3a8a",
+        color: "white",
+        borderRadius: 6,
+        textTransform: "none",
+        padding: "6px 20px",
+      }}
+    >
+      Close
+    </Button>
+  </DialogActions>
+</Dialog>
+
+
+
+    
     </div>
   );
 }
