@@ -500,33 +500,107 @@ const getPaidStatus = (empId) => {
   return record ? record.paid : "No"; // Default No if not found
 };
 
+// const handleSalaryUpdate = async () => {
+//   if (!updateForm.due_date) {
+//     alert("Please select a due date before saving.");
+//     return;
+//   }
+
+//   try {
+//     const res = await fetch(`http://localhost:7760/update-salary/${selectedEmployee.employee_id}`, {
+//       method: "PUT",
+//       headers: { "Content-Type": "application/json" },
+//       body: JSON.stringify(updateForm),
+//     });
+
+//     const data = await res.json();
+//     if (res.ok) {
+//       alert("Salary updated successfully!");
+//       setOpenUpdateModal(false);
+//       // optionally refetch salary data
+//       // fetchMonthlySalaryData();
+//     } else {
+//       alert(data.error || "Failed to update salary");
+//     }
+//   } catch (err) {
+//     console.error("❌ Error updating salary:", err);
+//     alert("Server error while updating salary");
+//   }
+// };
+
+// Replace your existing handleSalaryUpdate with this
 const handleSalaryUpdate = async () => {
   if (!updateForm.due_date) {
     alert("Please select a due date before saving.");
     return;
   }
+  if (!selectedEmployee) {
+    alert("No employee selected");
+    return;
+  }
+
+  const empId = selectedEmployee.employee_id;
+  const monthKey = updateForm.month; // expect "YYYY-MM"
+  const newActual = Number(updateForm.actual_to_pay || 0);
+  const newDue = updateForm.due_date || null;
+
+  // --- optimistic update: update monthlySalaryData so UI reflects change immediately ---
+  setMonthlySalaryData(prev => {
+    // Find existing record for employee+month
+    const idx = prev.findIndex(r => r.employee_id === empId && r.month === monthKey);
+    const newRec = {
+      employee_id: empId,
+      employee_name: selectedEmployee.employee_name,
+      month: monthKey,
+      actual_to_pay: newActual,
+      due_date: newDue,
+      // preserve other fields if present
+      paid: prev[idx]?.paid ?? "No",
+      paid_amount: prev[idx]?.paid_amount ?? 0,
+      paid_date: prev[idx]?.paid_date ?? null,
+      net_takehome: prev[idx]?.net_takehome ?? selectedEmployee.net_takehome ?? 0,
+      ...prev[idx],
+    };
+
+    if (idx > -1) {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], ...newRec };
+      return copy;
+    } else {
+      // insert new record
+      return [...prev, newRec];
+    }
+  });
 
   try {
-    const res = await fetch(`http://localhost:7760/update-salary/${selectedEmployee.employee_id}`, {
+    const res = await fetch(`http://localhost:7760/update-salary/${empId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updateForm),
     });
 
     const data = await res.json();
-    if (res.ok) {
+
+    if (res.ok && (data.success === undefined || data.success === true)) {
+      // success: close modal and sync authoritative data
       alert("Salary updated successfully!");
       setOpenUpdateModal(false);
-      // optionally refetch salary data
-      // fetchMonthlySalaryData();
+
+      // refresh server state (you already have this fn)
+      await fetchAllMonthlySalaries();
     } else {
-      alert(data.error || "Failed to update salary");
+      // server indicated failure -> rollback by re-fetching server state
+      alert(data.error || data.message || "Failed to update salary");
+      await fetchAllMonthlySalaries();
     }
   } catch (err) {
-    console.error("❌ Error updating salary:", err);
+    console.error("Error updating salary:", err);
     alert("Server error while updating salary");
+    // rollback to server state
+    await fetchAllMonthlySalaries();
   }
 };
+
 
 
   return (

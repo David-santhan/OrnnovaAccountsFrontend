@@ -220,7 +220,7 @@ const [expenseStatusFilter, setExpenseStatusFilter] = useState("All");
 
         setSummary(s);
         setFiltered(s);
-        // console.log(data);
+         console.log(data);
       }
     } catch (err) {
       console.error("fetchForecast error", err);
