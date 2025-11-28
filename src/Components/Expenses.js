@@ -51,7 +51,7 @@ const Expenses = () => {
   const [updateExpense, setUpdateExpense] = useState(null);
   const [holdExpense, setHoldExpense] = useState(null);
   const [openHoldDialog, setOpenHoldDialog] = useState(false);
-
+const [selectedMonthYearInput, setSelectedMonthYearInput] = useState("");
   const [newExpense, setNewExpense] = useState({
     regular: "",
     type: "",
@@ -150,33 +150,100 @@ const Expenses = () => {
   }, []);
 
   // POST new expense to backend
-  const handleAddExpense = async () => {
-    try {
-      const payload = { ...newExpense, paid_date: "00-00-0000" };
-      await axios.post("http://localhost:7760/postexpenses", payload);
+  // const handleAddExpense = async () => {
+  //   try {
+  //     const payload = { ...newExpense, paid_date: "00-00-0000" };
+  //     await axios.post("http://localhost:7760/postexpenses", payload);
 
-      // REFRESH: fetch fresh data for the currently selected month and apply filters
-      const refreshed = await fetchExpenses(selectedMonthYear);
-      handleApplyFilterWithData(refreshed);
+  //     // REFRESH: fetch fresh data for the currently selected month and apply filters
+  //     const refreshed = await fetchExpenses(selectedMonthYear);
+  //     handleApplyFilterWithData(refreshed);
 
-      // Reset form + show success
-      setNewExpense({
-        regular: "",
-        type: "",
-        description: "",
-        amount: "",
-        currency: "INR",
-        raised_date: today,
-        due_date: "",
-        status: "",
-      });
-      setOpenDialog(false);
-      setSnackbarMessage("Expense added successfully!");
-      setSnackbarOpen(true);
-    } catch (err) {
-      console.error("Error adding expense:", err);
-    }
-  };
+  //     // Reset form + show success
+  //     setNewExpense({
+  //       regular: "",
+  //       type: "",
+  //       description: "",
+  //       amount: "",
+  //       currency: "INR",
+  //       raised_date: today,
+  //       due_date: "",
+  //       status: "",
+  //     });
+  //     setOpenDialog(false);
+  //     setSnackbarMessage("Expense added successfully!");
+  //     setSnackbarOpen(true);
+  //   } catch (err) {
+  //     console.error("Error adding expense:", err);
+  //   }
+  // };
+const handleAddExpense = async () => {
+  try {
+    // Normalize and validate newExpense client-side
+    const payload = {
+      ...newExpense
+    };
+
+    // Ensure required default values exist
+    payload.regular = payload.regular && (payload.regular === "Yes" || payload.regular === "No") ? payload.regular : "No";
+    payload.currency = payload.currency || "INR";
+
+    // Normalize raised_date & due_date similarly to server (YYYY-MM or YYYY-MM-DD -> we send YYYY-MM-DD)
+    const normDate = (d) => {
+      if (!d) return null;
+      if (/^\d{4}-\d{2}$/.test(d)) return `${d}-01`;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+      if (/^\d{2}-\d{2}-\d{4}$/.test(d)) {
+        const [dd, mm, yyyy] = d.split("-");
+        return `${yyyy}-${mm}-${dd}`;
+      }
+      const parsed = new Date(d);
+      if (!isNaN(parsed)) {
+        const yyyy = parsed.getFullYear();
+        const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+        const dd = String(parsed.getDate()).padStart(2, "0");
+        return `${yyyy}-${mm}-${dd}`;
+      }
+      return null;
+    };
+
+    payload.raised_date = normDate(payload.raised_date) || normDate(today) || null;
+    payload.due_date = normDate(payload.due_date) || payload.raised_date;
+
+    // set a placeholder for paid_date column as your DB expects "00-00-0000" earlier (but better to keep null)
+    payload.paid_date = payload.paid_date || null;
+
+    // POST
+    const resp = await axios.post("http://localhost:7760/postexpenses", payload);
+
+    // Use the month the user selected in the Month control if present, else derive from raised_date.
+    // Prefer selectedMonthYearInput (YYYY-MM) because that's what your get API expects.
+    const monthUsed = selectedMonthYearInput || (payload.raised_date ? payload.raised_date.slice(0, 7) : selectedMonthYear);
+
+    // REFRESH: fetch fresh data for the monthUsed and apply filters using the fresh array and monthUsed
+    const refreshed = await fetchExpenses(monthUsed);
+    handleApplyFilterWithData(refreshed, monthUsed);
+
+    // Reset form + show success
+    setNewExpense({
+      regular: "",
+      type: "",
+      description: "",
+      amount: "",
+      currency: "INR",
+      raised_date: today, // keep this format same as before
+      due_date: "",
+      status: "",
+    });
+    setOpenDialog(false);
+    setSnackbarMessage("Expense added successfully!");
+    setSnackbarOpen(true);
+  } catch (err) {
+    console.error("Error adding expense:", err);
+    setSnackbarMessage("Failed to add expense.");
+    setSnackbarOpen(true);
+  }
+};
 
   const handleMarkAsPaid = async (expenseId) => {
     if (!paidDate || !paidAmount) {
@@ -214,6 +281,19 @@ const Expenses = () => {
       alert(err.response?.data?.message || "Something went wrong. Please try again.");
     }
   };
+// Open Pay modal and ensure amount is chosen from actual_to_pay OR amount
+const openPayForExpense = (e, exp) => {
+  // prevent table row click
+  if (e && e.stopPropagation) e.stopPropagation();
+
+  // Prefer actual_to_pay, then actual_amount (if some naming), then amount
+  const amountToPay = Number(exp.actual_to_pay ?? exp.actual_amount ?? exp.amount ?? 0);
+
+  setPayExpense({ ...exp, amount: amountToPay }); // ensure payExpense.amount exists
+  setPaidDate(new Date().toISOString().split("T")[0]);
+  setPaidAmount(amountToPay);
+  setOpenPayDialog(true);
+};
 
   // Updated filter function that accepts data
   const handleApplyFilterWithData = (data) => {
@@ -242,30 +322,33 @@ const Expenses = () => {
 
     // 🔹 Month-Year Filter (Correct Logic)
     if (selectedMonthYear) {
-      const [year, month] = selectedMonthYear.split("-");
-      const selectedMonth = parseInt(month);
-      const selectedYear = parseInt(year);
+  const [year, month] = selectedMonthYear.split("-");
+  const selectedYear = Number(year);
+  const selectedMonth = Number(month);
 
-      filtered = filtered.filter((exp) => {
-        const raised = new Date(exp.raised_date);
-        const raisedMonth = raised.getMonth() + 1;
-        const raisedYear = raised.getFullYear();
+  filtered = filtered.filter((exp) => {
+    const [expYear, expMonth] = exp.raised_date.split("-").map(Number);
 
-        const paymentExists =
-          exp.actual_to_pay != null && exp.actual_to_pay !== undefined;
+    const paymentExists =
+      exp.actual_to_pay != null && exp.actual_to_pay !== undefined;
 
-        if (paymentExists) return true;
+    if (paymentExists) return true;
 
-        if (exp.regular === "Yes") {
-          return (
-            selectedYear > raisedYear ||
-            (selectedYear === raisedYear && selectedMonth >= raisedMonth)
-          );
-        }
-
-        return raisedYear === selectedYear && raisedMonth === selectedMonth;
-      });
+    // For regular = Yes → allow all months up to selected
+    if (exp.regular === "Yes") {
+      return (
+        selectedYear > expYear ||
+        (selectedYear === expYear && selectedMonth >= expMonth)
+      );
     }
+
+    // Non-regular → must be exact month
+    return (
+      expYear === selectedYear && expMonth === selectedMonth
+    );
+  });
+}
+
 
     setFilteredExpenses(filtered);
     setMonthYear(selectedMonthYear);
@@ -324,20 +407,34 @@ const Expenses = () => {
   }
 
   const [selectedCategory, setSelectedCategory] = useState(null);
+// --------- NEW: compute remaining totals per category (accounts for payments) ----------
+const totals = {}; // remaining amounts per category after payments
+const originalTotals = {}; // optional: original totals if you need them later
 
-  const totals = {};
-  filteredexpenses.forEach((exp) => {
-    const category = getMainCategory(exp.type);
-    const amount = Number(exp.actual_to_pay || exp.amount || 0);
-    if (!totals[category]) totals[category] = 0;
-    totals[category] += amount;
-  });
+filteredexpenses.forEach((exp) => {
+  const category = getMainCategory(exp.type);
+  const originalAmount = Number(exp.actual_to_pay ?? exp.amount ?? 0);
+  const paidAmount = Number(exp.paid_amount ?? 0);
 
-  const filteredRightSide = selectedCategory
-    ? filteredexpenses.filter((exp) => getMainCategory(exp.type) === selectedCategory)
-    : filteredexpenses;
+  // compute remaining:
+  // if paymentstatus === "Paid" => remaining should be 0 (or if partially paid use max(0, original - paid))
+  // otherwise remaining = max(0, original - paid)
+  const remaining = Math.max(0, originalAmount - paidAmount);
 
-  const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
+  if (!totals[category]) totals[category] = 0;
+  totals[category] += remaining;
+
+  if (!originalTotals[category]) originalTotals[category] = 0;
+  originalTotals[category] += originalAmount;
+});
+
+// filteredRightSide uses the same filtering logic but keep full rows
+const filteredRightSide = selectedCategory
+  ? filteredexpenses.filter((exp) => getMainCategory(exp.type) === selectedCategory)
+  : filteredexpenses;
+
+// grand total is sum of remaining across all categories (reflects payments deducted)
+const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
 
   return (
     <div
@@ -398,22 +495,19 @@ const Expenses = () => {
             ))}
           </TextField>
 
-          <TextField
-            size="small"
-            label="Month-Year"
-            type="month"
-            InputLabelProps={{ shrink: true }}
-            value={selectedMonthYear}
-            onChange={async (e) => {
-              const v = e.target.value;
-              setSelectedMonthYear(v);
-              // fetch and apply immediately
-              const refreshed = await fetchExpenses(v);
-              handleApplyFilterWithData(refreshed);
-            }}
-            style={{ minWidth: "150px" }}
-          />
+         <TextField
+  size="small"
+  label="Month-Year"
+  type="month"
+  InputLabelProps={{ shrink: true }}
+  value={selectedMonthYearInput}
+  onChange={(e) => {
+    setSelectedMonthYearInput(e.target.value); // only updates input value
+  }}
+  style={{ minWidth: "150px" }}
+/>
 
+{/* 
           <FormControl size="small" sx={{ minWidth: 150 }}>
             <InputLabel>Status</InputLabel>
             <Select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} label="Status">
@@ -424,11 +518,23 @@ const Expenses = () => {
               <MenuItem value="Hold">Hold</MenuItem>
               <MenuItem value="Rejected">Rejected</MenuItem>
             </Select>
-          </FormControl>
+          </FormControl> */}
 
-          <Button variant="outlined" color="warning" onClick={() => handleApplyFilterWithData(expenses)}>
-            Search
-          </Button>
+          <Button
+  variant="outlined"
+  color="warning"
+  onClick={async () => {
+    setSelectedMonthYear(selectedMonthYearInput); // apply selected month
+    
+    const refreshed = await fetchExpenses(selectedMonthYearInput); // fetch fresh data
+    
+    handleApplyFilterWithData(refreshed); // apply filters correctly
+  }}
+>
+  Search
+</Button>
+
+
         </div>
 
         {!showTotal ? (
@@ -554,22 +660,47 @@ const Expenses = () => {
             border: "1px solid #e3e3e3",
           }}
         >
-          <Divider
-            style={{
-              padding: "10px",
-              backgroundColor: "rgba(201, 197, 221, 0.8)",
-              fontWeight: "700",
-              color: "#2b2b2b",
-              fontSize: "16px",
-              borderTopLeftRadius: "12px",
-              borderTopRightRadius: "12px",
-            }}
-          >
-            {selectedMonthYear
-              ? new Date(selectedMonthYear + "-01").toLocaleString("en-GB", { month: "short", year: "numeric" }).replace(" ", "-")
-              : "-"}{" "}
-            — <span style={{ color: "#4f46e5" }}>{selectedCategory || "All Expenses"}</span>
-          </Divider>
+<Divider
+  style={{
+    padding: "10px",
+    backgroundColor: "rgba(201, 197, 221, 0.8)",
+    fontWeight: "700",
+    color: "#2b2b2b",
+    fontSize: "16px",
+    borderTopLeftRadius: "12px",
+    borderTopRightRadius: "12px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  }}
+>
+  {/* left: Month-Year */}
+  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <span>
+      {selectedMonthYear
+        ? new Date(selectedMonthYear + "-01")
+            .toLocaleString("en-GB", { month: "short", year: "numeric" })
+            .replace(" ", "-")
+        : "-"}
+    </span>
+
+    <span style={{ marginLeft: 6 }}>—</span>
+
+    {/* category + dash + amount */}
+    <span style={{ color: "#4f46e5", fontWeight: 800 }}>
+      {selectedCategory
+        ? `${selectedCategory}-${formatCurrency(originalTotals[selectedCategory] ?? 0)}`
+        : `All Expenses-${formatCurrency(
+            Object.values(originalTotals).reduce((s, v) => s + v, 0)
+          )}`}
+    </span>
+  </div>
+
+  {/* optional empty div keeps spacing consistent */}
+  <div />
+</Divider>
+
+
 
           <Table stickyHeader>
             <TableHead>
@@ -683,45 +814,42 @@ const Expenses = () => {
                   </TableCell>
 
                   {/* Action */}
-                  <TableCell>
-                    {exp.paymentstatus === "Paid" ? (
-                      <VerifiedRoundedIcon style={{ color: "green", fontSize: "32px", transform: "rotate(-10deg)" }} />
-                    ) : !exp.actual_to_pay ? (
-                      <Button variant="contained" size="small" sx={{ backgroundColor: "#9ca3af", fontWeight: "700", borderRadius: "6px" }} disabled>
-                        Pay
-                      </Button>
-                    ) : (
-                      <>
-                        <Button
-                          variant="contained"
-                          size="small"
-                          sx={{ backgroundColor: "rgba(7, 186, 126, 0.85)", fontWeight: "700", borderRadius: "6px", marginRight: "8px", marginBottom: "7px" }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPayExpense(exp);
-                            setPaidDate(new Date().toISOString().split("T")[0]);
-                            setPaidAmount(exp.actual_to_pay);
-                            setOpenPayDialog(true);
-                          }}
-                        >
-                          Pay
-                        </Button>
+                 <TableCell>
+  {exp.paymentstatus === "Paid" ? (
+    <VerifiedRoundedIcon style={{ color: "green", fontSize: "32px", transform: "rotate(-10deg)" }} />
+  ) : (
+    <>
+      <Button
+        variant="contained"
+        size="small"
+        sx={{
+          backgroundColor: "rgba(7, 186, 126, 0.85)",
+          fontWeight: "700",
+          borderRadius: "6px",
+          marginRight: "8px",
+          marginBottom: "7px",
+        }}
+        onClick={(e) => openPayForExpense(e, exp)}
+      >
+        Pay
+      </Button>
 
-                        <Button
-                          variant="contained"
-                          size="small"
-                          sx={{ backgroundColor: "#f59e0b", fontWeight: "700", borderRadius: "6px" }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setHoldExpense(exp);
-                            setOpenHoldDialog(true);
-                          }}
-                        >
-                          Hold
-                        </Button>
-                      </>
-                    )}
-                  </TableCell>
+      {/* <Button
+        variant="contained"
+        size="small"
+        sx={{ backgroundColor: "#f59e0b", fontWeight: "700", borderRadius: "6px" }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setHoldExpense(exp);
+          setOpenHoldDialog(true);
+        }}
+      >
+        Hold
+      </Button> */}
+    </>
+  )}
+</TableCell>
+
                 </TableRow>
               ))}
             </TableBody>
@@ -729,7 +857,7 @@ const Expenses = () => {
         </TableContainer>
       </div>
 
-      {/* Hold dialog */}
+      {/* Hold dialog
       <Dialog open={openHoldDialog} onClose={() => setOpenHoldDialog(false)}>
         <DialogTitle>Hold Expense</DialogTitle>
         <DialogContent>Are you sure you want to put this expense on hold?</DialogContent>
@@ -744,7 +872,7 @@ const Expenses = () => {
             Confirm
           </Button>
         </DialogActions>
-      </Dialog>
+      </Dialog> */}
 
       {/* Update Actual TO pay Dialog */}
       <Dialog open={openUpdateDialog} onClose={() => setOpenUpdateDialog(false)} maxWidth="xs" fullWidth={false}>
@@ -782,12 +910,13 @@ const Expenses = () => {
               }
               numericExpenseId = Number(numericExpenseId);
 
-              const payload = {
-                expense_id: numericExpenseId,
-                month_year: selectedMonthYear,
-                actual_amount: updateExpense.amount,
-                due_date: updateExpense.due_date,
-              };
+             const payload = {
+  expense_id: numericExpenseId,
+  month_year: selectedMonthYear,
+  actual_amount: updateExpense.actual_to_pay ?? updateExpense.amount,
+  due_date: updateExpense.due_date,
+};
+
 
               try {
                 await axios.post("http://localhost:7760/saveExpensePayment", payload);
