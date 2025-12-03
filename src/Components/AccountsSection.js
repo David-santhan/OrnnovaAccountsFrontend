@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from "react";
 import {
   Box,
@@ -17,7 +18,14 @@ import {
   TableCell,
   TableBody,
   Stack,
-  IconButton,Dialog,DialogTitle,DialogContent,DialogActions,FormControl,InputLabel,Select
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
 } from "@mui/material";
 import AccountBalanceIcon from "@mui/icons-material/AccountBalance";
 import CloseIcon from "@mui/icons-material/Close";
@@ -25,7 +33,6 @@ import axios from "axios";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 import autoTable from "jspdf-autotable";
-
 
 const AccountsSection = () => {
   const [accounts, setAccounts] = useState([]);
@@ -42,12 +49,11 @@ const AccountsSection = () => {
   const [transferAmount, setTransferAmount] = useState("");
   const [toAccount, setToAccount] = useState("");
   const [transferDesc, setTransferDesc] = useState("");
-  const [accountNumber,setAccountNumber] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
   const [openTransactionDialog, setOpenTransactionDialog] = useState(false);
   const [filterType, setFilterType] = useState("last10");
-const [customDateRange, setCustomDateRange] = useState({ from: "", to: "" });
-const [filteredTransactions, setFilteredTransactions] = useState([]);
-
+  const [customDateRange, setCustomDateRange] = useState({ from: "", to: "" });
+  const [filteredTransactions, setFilteredTransactions] = useState([]);
 
   const [newAccount, setNewAccount] = useState({
     account_number: "",
@@ -86,31 +92,30 @@ const [filteredTransactions, setFilteredTransactions] = useState([]);
     setShowTransfer(false);
   };
 
- const handleShowTransactions = async () => {
-  if (!selectedAccount || !selectedAccount.account_number) {
-    alert("Please select an account first");
-    return;
-  }
+  const handleShowTransactions = async () => {
+    if (!selectedAccount || !selectedAccount.account_number) {
+      alert("Please select an account first");
+      return;
+    }
 
-  setShowTransactions(true);
-  setShowBalance(false);
-  setShowTransfer(false);
-  setLoading(true);
+    setShowTransactions(true);
+    setShowBalance(false);
+    setShowTransfer(false);
+    setLoading(true);
 
-  try {
-  const res = await axios.get(
-  `http://localhost:7760/transactionsOfBankAccounts?account_number=${selectedAccount.account_number}`
-);
+    try {
+      const res = await axios.get(
+        `http://localhost:7760/transactionsOfBankAccounts?account_number=${selectedAccount.account_number}`
+      );
 
-    setTransactions(res.data);
-  } catch (err) {
-    console.error(err);
-    alert("Failed to fetch transactions");
-  } finally {
-    setLoading(false);
-  }
-};
-
+      setTransactions(res.data);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to fetch transactions");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleShowTransfer = () => {
     setShowTransfer(true);
@@ -127,7 +132,7 @@ const [filteredTransactions, setFilteredTransactions] = useState([]);
         `http://localhost:7760/accounts/${selectedAccount.account_number}/add-balance`,
         { amount: Number(addAmount) }
       );
-      setBalance((prev) => prev + Number(addAmount));
+      setBalance((prev) => Number(prev) + Number(addAmount));
       setAddAmount("");
       loadAccounts();
       alert("✅ Balance updated successfully!");
@@ -184,81 +189,83 @@ const [filteredTransactions, setFilteredTransactions] = useState([]);
       alert(err.response?.data?.error || "Transfer failed");
     }
   };
-const handleDownloadPDF = () => {
-  const doc = new jsPDF();
 
-  // 🧾 Optional: Add a custom title
-  doc.setFontSize(16);
-  doc.text("Transaction History", 14, 15);
+  const handleDownloadPDF = () => {
+    const doc = new jsPDF();
 
-  // Table columns (headers)
-  const tableColumn = ["Transaction ID", "Type", "Description", "Amount (₹)", "Date"];
+    // 🧾 Optional: Add a custom title
+    doc.setFontSize(16);
+    doc.text("Transaction History", 14, 15);
 
-  // Table rows (data)
-  const tableRows = transactions.map((t) => [
-    t.transaction_id,
-    t.type,
-    t.description,
-    `₹${t.amount}`,
-    new Date(t.created_at).toLocaleString(),
-  ]);
+    // Table columns (headers)
+    const tableColumn = ["Transaction ID", "Type", "Description", "Amount (₹)", "Date"];
 
-  // 🟢 Here's where you use your styled autoTable
-  autoTable(doc, {
-    head: [tableColumn],
-    body: tableRows,
-    startY: 25, // space after title
-    theme: "grid", // adds borders to cells
-    headStyles: { fillColor: [25, 118, 210] }, // MUI blue
-    styles: { fontSize: 10, cellPadding: 3 },
-    alternateRowStyles: { fillColor: [240, 240, 240] }, // light gray alternate
-  });
+    // Table rows (data)
+    const tableRows = transactions.map((t) => [
+      t.transaction_id,
+      t.type,
+      t.description,
+      `₹${t.amount}`,
+      new Date(t.created_at).toLocaleString(),
+    ]);
 
-  // Footer note or signature (optional)
-  const date = new Date().toLocaleString();
-  doc.text(`Generated on: ${date}`, 14, doc.lastAutoTable.finalY + 10);
+    // 🟢 Here's where you use your styled autoTable
+    autoTable(doc, {
+      head: [tableColumn],
+      body: tableRows,
+      startY: 25, // space after title
+      theme: "grid", // adds borders to cells
+      headStyles: { fillColor: [25, 118, 210] }, // MUI blue
+      styles: { fontSize: 10, cellPadding: 3 },
+      alternateRowStyles: { fillColor: [240, 240, 240] }, // light gray alternate
+    });
 
-  // Save the PDF
-  doc.save("Transaction_History.pdf");
-};
+    // Footer note or signature (optional)
+    const date = new Date().toLocaleString();
+    doc.text(`Generated on: ${date}`, 14, doc.lastAutoTable.finalY + 10);
 
+    // Save the PDF
+    doc.save("Transaction_History.pdf");
+  };
 
-useEffect(() => {
-  applyFilter();
-}, [transactions, filterType]);
+  useEffect(() => {
+    applyFilter();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactions, filterType]);
 
-const handleApplyCustomFilter = () => {
-  applyFilter();
-};
+  const handleApplyCustomFilter = () => {
+    applyFilter();
+  };
 
-const applyFilter = () => {
-  let filtered = [...transactions];
-  const now = new Date();
+  const applyFilter = () => {
+    let filtered = [...transactions];
+    const now = new Date();
 
-  if (filterType === "last10") {
-    filtered = transactions.slice(-10).reverse(); // latest 10
-  } else if (filterType === "week") {
-    const weekAgo = new Date();
-    weekAgo.setDate(now.getDate() - 7);
-    filtered = transactions.filter(
-      (t) => new Date(t.created_at) >= weekAgo && new Date(t.created_at) <= now
-    );
-  } else if (filterType === "month") {
-    const monthAgo = new Date();
-    monthAgo.setMonth(now.getMonth() - 1);
-    filtered = transactions.filter(
-      (t) => new Date(t.created_at) >= monthAgo && new Date(t.created_at) <= now
-    );
-  } else if (filterType === "custom") {
-    const fromDate = new Date(customDateRange.from);
-    const toDate = new Date(customDateRange.to);
-    filtered = transactions.filter(
-      (t) => new Date(t.created_at) >= fromDate && new Date(t.created_at) <= toDate
-    );
-  }
+    if (filterType === "last10") {
+      filtered = transactions.slice(-10).reverse(); // latest 10
+    } else if (filterType === "week") {
+      const weekAgo = new Date();
+      weekAgo.setDate(now.getDate() - 7);
+      filtered = transactions.filter(
+        (t) => new Date(t.created_at) >= weekAgo && new Date(t.created_at) <= now
+      );
+    } else if (filterType === "month") {
+      const monthAgo = new Date();
+      monthAgo.setMonth(now.getMonth() - 1);
+      filtered = transactions.filter(
+        (t) => new Date(t.created_at) >= monthAgo && new Date(t.created_at) <= now
+      );
+    } else if (filterType === "custom") {
+      const fromDate = new Date(customDateRange.from);
+      const toDate = new Date(customDateRange.to);
+      filtered = transactions.filter(
+        (t) => new Date(t.created_at) >= fromDate && new Date(t.created_at) <= toDate
+      );
+    }
 
-  setFilteredTransactions(filtered);
-};
+    setFilteredTransactions(filtered);
+  };
+
   return (
     <Box sx={{ p: 4 }}>
       <Typography
@@ -297,7 +304,10 @@ const applyFilter = () => {
                     ? "linear-gradient(135deg, #e3f2fd, #bbdefb)"
                     : "linear-gradient(135deg, #f1f8e9, #dcedc8)",
               }}
-              onClick={() => {handleOpen(acc); setAccountNumber(acc.account_number);}}
+              onClick={() => {
+                handleOpen(acc);
+                setAccountNumber(acc.account_number);
+              }}
             >
               <Stack direction="row" spacing={2} alignItems="center">
                 <AccountBalanceIcon
@@ -311,8 +321,9 @@ const applyFilter = () => {
                   <Typography color="text.secondary">
                     {acc.account_type} A/C
                   </Typography>
+                  {/* <-- REPLACED: Show balance instead of account number */}
                   <Typography color="text.secondary">
-                    #{acc.account_number}
+                    Balance: ₹{Number(acc.balance || 0).toFixed(2)}
                   </Typography>
                 </Box>
               </Stack>
@@ -322,7 +333,7 @@ const applyFilter = () => {
       </Grid>
 
       {/* Account Modal */}
-     <Modal open={open} onClose={handleClose}>
+      <Modal open={open} onClose={handleClose}>
         <Paper
           elevation={6}
           sx={{
@@ -370,7 +381,7 @@ const applyFilter = () => {
                 </Typography>
                 <Typography>
                   <strong>Created:</strong>{" "}
-                  {new Date(selectedAccount?.created_at).toLocaleDateString()}
+                  {selectedAccount?.created_at ? new Date(selectedAccount?.created_at).toLocaleDateString() : ""}
                 </Typography>
 
                 <Divider sx={{ my: 2 }} />
@@ -388,7 +399,10 @@ const applyFilter = () => {
                     variant={showTransactions ? "contained" : "outlined"}
                     color="primary"
                     fullWidth
-                    onClick={() => {handleShowTransactions();setOpenTransactionDialog(true)}} // ✅ open dialog here
+                    onClick={() => {
+                      handleShowTransactions();
+                      setOpenTransactionDialog(true);
+                    }} // ✅ open dialog here
                   >
                     {loading ? "Loading..." : "View Transactions"}
                   </Button>
@@ -414,7 +428,7 @@ const applyFilter = () => {
                     color={balance >= 0 ? "green" : "red"}
                     fontWeight="bold"
                   >
-                    Current Balance: ₹{balance?.toFixed(2)}
+                    Current Balance: ₹{Number(balance || 0).toFixed(2)}
                   </Typography>
                   <Stack
                     direction={{ xs: "column", sm: "row" }}
@@ -487,155 +501,155 @@ const applyFilter = () => {
       </Modal>
 
       {/* 🧾 TRANSACTION HISTORY DIALOG */}
-     <Dialog
-  open={openTransactionDialog}
-  onClose={() => setOpenTransactionDialog(false)}
-  maxWidth="xl"
-  fullWidth
->
-  <DialogTitle sx={{ fontWeight: "bold", textAlign: "center" }}>
-    Transaction History
-  </DialogTitle>
+      <Dialog
+        open={openTransactionDialog}
+        onClose={() => setOpenTransactionDialog(false)}
+        maxWidth="xl"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: "bold", textAlign: "center" }}>
+          Transaction History
+        </DialogTitle>
 
-  <DialogContent>
-    <Paper elevation={2} sx={{ p: 2, borderRadius: 2 }}>
-      {/* 🧩 Filter Controls */}
-      <Box sx={{ display: "flex", gap: 2, mb: 2, alignItems: "center", flexWrap: "wrap" }}>
-        <FormControl size="small" sx={{ minWidth: 200 }}>
-          <InputLabel>Filter By</InputLabel>
-          <Select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            label="Filter By"
-          >
-            <MenuItem value="last10">Last 10 Transactions</MenuItem>
-            <MenuItem value="week">Last Week</MenuItem>
-            <MenuItem value="month">Last Month</MenuItem>
-            <MenuItem value="custom">Custom Dates</MenuItem>
-          </Select>
-        </FormControl>
+        <DialogContent>
+          <Paper elevation={2} sx={{ p: 2, borderRadius: 2 }}>
+            {/* 🧩 Filter Controls */}
+            <Box sx={{ display: "flex", gap: 2, mb: 2, alignItems: "center", flexWrap: "wrap" }}>
+              <FormControl size="small" sx={{ minWidth: 200 }}>
+                <InputLabel>Filter By</InputLabel>
+                <Select
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value)}
+                  label="Filter By"
+                >
+                  <MenuItem value="last10">Last 10 Transactions</MenuItem>
+                  <MenuItem value="week">Last Week</MenuItem>
+                  <MenuItem value="month">Last Month</MenuItem>
+                  <MenuItem value="custom">Custom Dates</MenuItem>
+                </Select>
+              </FormControl>
 
-        {/* 📅 Custom Date Pickers */}
-        {filterType === "custom" && (
-          <>
-            <TextField
-              type="date"
-              label="From"
-              size="small"
-              InputLabelProps={{ shrink: true }}
-              value={customDateRange.from}
-              onChange={(e) =>
-                setCustomDateRange((prev) => ({ ...prev, from: e.target.value }))
-              }
-            />
-            <TextField
-              type="date"
-              label="To"
-              size="small"
-              InputLabelProps={{ shrink: true }}
-              value={customDateRange.to}
-              onChange={(e) =>
-                setCustomDateRange((prev) => ({ ...prev, to: e.target.value }))
-              }
-            />
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={handleApplyCustomFilter}
-              sx={{ height: 40 }}
-            >
-              Apply
-            </Button>
-          </>
-        )}
-      </Box>
-
-      {/* 🧾 Transactions Table */}
-      <Box sx={{ maxHeight: 350, overflowY: "auto" }}>
-        <Table size="small">
-          <TableHead>
-            <TableRow sx={{ backgroundColor: "#f3f4f6" }}>
-              <TableCell sx={{ fontWeight: "bold" }}>Transaction ID</TableCell>
-              <TableCell sx={{ fontWeight: "bold" }}>Type</TableCell>
-              <TableCell sx={{ fontWeight: "bold" }}>Description</TableCell>
-              <TableCell sx={{ fontWeight: "bold" }} align="right">
-                Amount
-              </TableCell>
-              <TableCell sx={{ fontWeight: "bold" }} align="right">
-                Previous Balance
-              </TableCell>
-              <TableCell sx={{ fontWeight: "bold" }} align="right">
-                Updated Balance
-              </TableCell>
-              <TableCell sx={{ fontWeight: "bold" }}>Date</TableCell>
-            </TableRow>
-          </TableHead>
-
-          <TableBody>
-            {filteredTransactions.length > 0 ? (
-              filteredTransactions.map((t) => (
-                <TableRow key={t.transaction_id}>
-                  <TableCell>{t.transaction_id}</TableCell>
-                  <TableCell
-                    sx={{
-                      color:
-                        t.type === "Credit"
-                          ? "green"
-                          : t.type === "Debit"
-                          ? "red"
-                          : "inherit",
-                      fontWeight: "bold",
-                    }}
+              {/* 📅 Custom Date Pickers */}
+              {filterType === "custom" && (
+                <>
+                  <TextField
+                    type="date"
+                    label="From"
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                    value={customDateRange.from}
+                    onChange={(e) =>
+                      setCustomDateRange((prev) => ({ ...prev, from: e.target.value }))
+                    }
+                  />
+                  <TextField
+                    type="date"
+                    label="To"
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                    value={customDateRange.to}
+                    onChange={(e) =>
+                      setCustomDateRange((prev) => ({ ...prev, to: e.target.value }))
+                    }
+                  />
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={handleApplyCustomFilter}
+                    sx={{ height: 40 }}
                   >
-                    {t.type}
-                  </TableCell>
-                  <TableCell>{t.description}</TableCell>
-                  <TableCell align="right">₹{Number(t.amount).toFixed(2)}</TableCell>
-                  <TableCell align="right">
-                    ₹{Number(t.previous_balance || 0).toFixed(2)}
-                  </TableCell>
-                  <TableCell align="right">
-                    ₹{Number(t.updated_balance || 0).toFixed(2)}
-                  </TableCell>
-                  <TableCell>
-                    {new Date(t.created_at).toLocaleString("en-IN", {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })}
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={7} align="center">
-                  No transactions found.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </Box>
-    </Paper>
-  </DialogContent>
+                    Apply
+                  </Button>
+                </>
+              )}
+            </Box>
 
-  <DialogActions sx={{ justifyContent: "space-between", px: 3 }}>
-    <Button
-      variant="outlined"
-      color="secondary"
-      onClick={() => setOpenTransactionDialog(false)}
-    >
-      Close
-    </Button>
-    <Button
-      variant="contained"
-      color="primary"
-      onClick={handleDownloadPDF}
-      disabled={filteredTransactions.length === 0}
-    >
-      Download PDF
-    </Button>
-  </DialogActions>
-</Dialog>
+            {/* 🧾 Transactions Table */}
+            <Box sx={{ maxHeight: 350, overflowY: "auto" }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ backgroundColor: "#f3f4f6" }}>
+                    <TableCell sx={{ fontWeight: "bold" }}>Transaction ID</TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>Type</TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>Description</TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }} align="right">
+                      Amount
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }} align="right">
+                      Previous Balance
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }} align="right">
+                      Updated Balance
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>Date</TableCell>
+                  </TableRow>
+                </TableHead>
+
+                <TableBody>
+                  {filteredTransactions.length > 0 ? (
+                    filteredTransactions.map((t) => (
+                      <TableRow key={t.transaction_id}>
+                        <TableCell>{t.transaction_id}</TableCell>
+                        <TableCell
+                          sx={{
+                            color:
+                              t.type === "Credit"
+                                ? "green"
+                                : t.type === "Debit"
+                                ? "red"
+                                : "inherit",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          {t.type}
+                        </TableCell>
+                        <TableCell>{t.description}</TableCell>
+                        <TableCell align="right">₹{Number(t.amount).toFixed(2)}</TableCell>
+                        <TableCell align="right">
+                          ₹{Number(t.previous_balance || 0).toFixed(2)}
+                        </TableCell>
+                        <TableCell align="right">
+                          ₹{Number(t.updated_balance || 0).toFixed(2)}
+                        </TableCell>
+                        <TableCell>
+                          {new Date(t.created_at).toLocaleString("en-IN", {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          })}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={7} align="center">
+                        No transactions found.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </Box>
+          </Paper>
+        </DialogContent>
+
+        <DialogActions sx={{ justifyContent: "space-between", px: 3 }}>
+          <Button
+            variant="outlined"
+            color="secondary"
+            onClick={() => setOpenTransactionDialog(false)}
+          >
+            Close
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleDownloadPDF}
+            disabled={filteredTransactions.length === 0}
+          >
+            Download PDF
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Create Account Modal */}
       <Modal open={openCreate} onClose={() => setOpenCreate(false)}>
@@ -695,6 +709,8 @@ const applyFilter = () => {
               >
                 <MenuItem value="Capital">Capital</MenuItem>
                 <MenuItem value="Current">Current</MenuItem>
+                <MenuItem value="Current">Kitty</MenuItem>
+               
               </TextField>
               <TextField
                 label="Initial Balance"
