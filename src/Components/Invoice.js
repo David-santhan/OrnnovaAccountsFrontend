@@ -561,6 +561,51 @@ useEffect(() => {
   }
 }, [newInvoice.invoice_value, selectedClient]);
 
+
+// inside Invoice() component
+const handleDeleteInvoice = async (invoiceId) => {
+  if (!invoiceId) return;
+
+  const ok = window.confirm("Are you sure you want to delete this invoice? This will only remove the invoice row.");
+  if (!ok) return;
+
+  try {
+    const res = await fetch(`http://localhost:7760/invoices/${invoiceId}`, {
+      method: "DELETE",
+    });
+    const body = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(body.error || body.message || "Failed to delete invoice");
+    }
+
+    // Remove from local arrays so UI updates immediately
+    setInvoices((prev) => prev.filter((inv) => inv.id !== invoiceId));
+    setRecievedMonthInvoices((prev) => prev.filter((inv) => inv.id !== invoiceId));
+
+    // If preview open for this invoice, close it
+    if (selectedInvoice?.id === invoiceId) {
+      setSelectedInvoice(null);
+      setOpenPreview(false);
+    }
+
+    // Optionally refresh lists to reflect DB state (projects won't change because backend doesn't)
+    try { fetchInvoices(); } catch (e) { console.warn("fetchInvoices failed", e); }
+    try { fetchInvoicesByMonth(); } catch (e) { console.warn("fetchInvoicesByMonth failed", e); }
+    // Note: fetchActiveProjects() / fetchProjectsWithoutInvoice() will NOT reflect invoice removal
+    // unless you want to update Projects table server-side. Use them if you still want to re-query.
+    // try { fetchActiveProjects(); } catch (e) {}
+    // try { fetchProjectsWithoutInvoice(); } catch (e) {}
+
+    alert(body.message || "Invoice deleted successfully.");
+  } catch (err) {
+    console.error("Error deleting invoice:", err);
+    alert("Failed to delete invoice: " + (err.message || "see console"));
+  }
+};
+
+
+
 // -------- getRaiseEligibility.js --------
 /**
  * Determine whether a project can raise an invoice in the selected month
@@ -1255,8 +1300,19 @@ useEffect(() => {
               ["SPOC", selectedProjectDetails.spoc],
               ["Email", selectedProjectDetails.mailID],
               ["Mobile No", selectedProjectDetails.mobileNo],
-              ["Employee ID", selectedProjectDetails.employeeID],
-              ["Employee Name", selectedProjectDetails.employeeName],
+             [
+  "Employee ID",
+  Array.isArray(selectedProjectDetails.employees)
+    ? selectedProjectDetails.employees.map((e) => e.id).join(", ")
+    : "-",
+],
+[
+  "Employee Name",
+  Array.isArray(selectedProjectDetails.employees)
+    ? selectedProjectDetails.employees.map((e) => e.name).join(", ")
+    : "-",
+],
+
             ].map(([label, value]) => (
               <TableRow key={label}>
                 <TableCell style={{ fontWeight: "bold", width: "45%", color: "#374151" }}>
@@ -1478,9 +1534,20 @@ useEffect(() => {
               >
                 <EditIcon color="primary" />
               </IconButton>
-              <IconButton>
-                <DeleteIcon color="error" />
-              </IconButton>
+              <IconButton
+  onClick={(e) => {
+    e.stopPropagation();
+    if (inv.received === "Yes") {
+      // optional business rule: block deletion of received invoices
+      alert("Cannot delete invoice that has been marked received.");
+      return;
+    }
+    handleDeleteInvoice(inv.id);
+  }}
+>
+  <DeleteIcon color="error" />
+</IconButton>
+
             </Box>
           </TableCell>
         </TableRow>
@@ -2347,7 +2414,7 @@ useEffect(() => {
           Base Value (Before Tax)
         </TableCell>
         <TableCell>
-          <TextField
+          {/* <TextField
             variant="outlined"
             type="number"
             size="small"
@@ -2380,7 +2447,63 @@ useEffect(() => {
                 fontSize: "0.9rem",
               },
             }}
-          />
+          /> */}
+
+          <TextField
+  variant="outlined"
+  type="number"
+  size="small"
+  value={newInvoice.base_value ?? calculatedValues.base_value ?? 0}
+  onChange={(e) => {
+    const base = Number(e.target.value) || 0;
+
+    // % from project first, otherwise from client, otherwise 0
+    const gstPct =
+      (selectedProject && selectedProject.gst != null
+        ? Number(selectedProject.gst)
+        : selectedClient && selectedClient.gstPercentage != null
+        ? Number(selectedClient.gstPercentage)
+        : 0) || 0;
+
+    const tdsPct =
+      (selectedProject && selectedProject.tds != null
+        ? Number(selectedProject.tds)
+        : 0) || 0;
+
+    // recompute GST & TDS from the NEW base value
+    const gst = Math.round((base * gstPct) / 100);
+    const tds = Math.round((base * tdsPct) / 100);
+    const total = base + gst - tds;
+
+    setNewInvoice((prev) => ({
+      ...prev,
+      base_value: base,
+      gst_amount: gst,
+      tds_amount: tds,
+      invoice_value: total,
+    }));
+
+    setCalculatedValues((prev) => ({
+      ...prev,
+      base_value: base,
+      gst_amount: gst,
+      tds_amount: tds,
+      invoice_value: total,
+    }));
+  }}
+  InputProps={{
+    startAdornment: (
+      <span style={{ marginRight: "5px", color: "#6b7280" }}>₹</span>
+    ),
+  }}
+  sx={{
+    "& .MuiOutlinedInput-root": {
+      height: 35,
+      fontSize: "0.9rem",
+    },
+  }}
+/>
+
         </TableCell>
       </TableRow>
 

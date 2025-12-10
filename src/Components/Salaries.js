@@ -19,7 +19,7 @@ function Salaries() {
   const [employees, setEmployees] = useState([]);
   const [selectedSalary, setSelectedSalary] = useState(null);
   
-  const [newSalary, setNewSalary] = useState({
+const [newSalary, setNewSalary] = useState({
   employee_id: "",
   employee_name: "",
   month: "",
@@ -44,7 +44,12 @@ function Salaries() {
   employer_health_insurance: "",
 
   net_takehome: "",
+
+  // 🔹 NEW
+  pf_manual: false,          // true when user overrides PF
+  pf_yearly: 0,              // store yearly PF when overridden
 });
+
 
   const [view, setView] = useState(""); // allSalaries | paidSalaries | pendingSalaries
   const [showTotal, setShowTotal] = useState(false);
@@ -203,32 +208,95 @@ function Salaries() {
   };
 
   // Submit form
-  const monthlySalaryHandleSubmit = async () => {
-    try {
-      const payload = {
-        paid: monthlySalaryFormData.paid,
-        lop: parseFloat(monthlySalaryFormData.lop) || 0,
-        paidAmount: parseFloat(monthlySalaryFormData.paidAmount) || 0,
-        actualToPay: parseFloat(monthlySalaryFormData.actualToPay) || 0,
-      };
+  // const monthlySalaryHandleSubmit = async () => {
+  //   try {
+  //     const payload = {
+  //       paid: monthlySalaryFormData.paid,
+  //       lop: parseFloat(monthlySalaryFormData.lop) || 0,
+  //       paidAmount: parseFloat(monthlySalaryFormData.paidAmount) || 0,
+  //       actualToPay: parseFloat(monthlySalaryFormData.actualToPay) || 0,
+  //     };
 
-      const response = await axios.put(
-        `http://localhost:7760/monthlySalary/update/${monthlySalaryFormData.empId}/${monthlySalaryFormData.month}`,
-        payload
-      );
+  //     const response = await axios.put(
+  //       `http://localhost:7760/monthlySalary/update/${monthlySalaryFormData.empId}/${monthlySalaryFormData.month}`,
+  //       payload
+  //     );
 
-      if (response.data.success) {
-        alert("Salary updated successfully!");
-        monthlySalaryCloseDialog();
-        fetchAllMonthlySalaries();
-      } else {
-        alert(response.data.message || "Failed to update salary");
-      }
-    } catch (error) {
-      console.error("❌ Error updating salary:", error);
-      alert("Server error while updating salary");
+  //     if (response.data.success) {
+       
+  //       alert("Salary updated successfully!");
+  //       monthlySalaryCloseDialog();
+  //       fetchAllMonthlySalaries();
+  //     } else {
+  //       alert(response.data.message || "Failed to update salary");
+  //     }
+  //   } catch (error) {
+  //     console.error("❌ Error updating salary:", error);
+  //     alert("Server error while updating salary");
+  //   }
+  // };
+
+// Submit form
+const monthlySalaryHandleSubmit = async () => {
+  try {
+    // ✅ Normalize numbers safely
+    const lopVal =
+      Number(
+        typeof monthlySalaryFormData.lop === "string"
+          ? monthlySalaryFormData.lop.replace(/[^0-9.]/g, "")
+          : monthlySalaryFormData.lop
+      ) || 0;
+
+    const paidAmtVal =
+      Number(
+        typeof monthlySalaryFormData.paidAmount === "string"
+          ? monthlySalaryFormData.paidAmount.replace(/[^0-9.]/g, "")
+          : monthlySalaryFormData.paidAmount
+      ) || 0;
+
+    const actualToPayRaw =
+      monthlySalaryFormData.actual_to_pay ??
+      monthlySalaryFormData.actualToPay ??
+      paidAmtVal;
+
+    const actualToPayVal =
+      Number(
+        typeof actualToPayRaw === "string"
+          ? actualToPayRaw.replace(/[^0-9.]/g, "")
+          : actualToPayRaw
+      ) || 0;
+
+    // ✅ Match backend body: paid, lop, paidAmount, actualToPay
+    const payload = {
+      paid: monthlySalaryFormData.paid,      // "Yes" / "No"
+      lop: lopVal,
+      paidAmount: paidAmtVal,
+      actualToPay: actualToPayVal,
+    };
+
+    console.log("Pay submit payload:", payload);
+
+    const response = await axios.put(
+      `http://localhost:7760/monthlySalary/update/${monthlySalaryFormData.empId}/${monthlySalaryFormData.month}`,
+      payload
+    );
+
+    if (response.data && response.data.success) {
+      alert("Salary saved / paid successfully!");
+      monthlySalaryCloseDialog();
+      fetchAllMonthlySalaries();
+    } else {
+      alert(response.data?.message || "Failed to save salary");
     }
-  };
+  } catch (error) {
+    console.error("❌ Error updating salary:", error);
+    alert(
+      error.response?.data?.message || "Server error while updating salary"
+    );
+  }
+};
+
+
 
   const getMonthYearLabel = (value) => {
     if (!value) return "All Months";
@@ -472,27 +540,48 @@ function Salaries() {
     fetchSalaries();
   };
 
-  const handleSalaryChange = (key, value) => {
-    let updatedSalary = { ...newSalary };
+ const handleSalaryChange = (key, value) => {
+  let updatedSalary = { ...newSalary };
 
-    // Convert monthly to yearly if user edited monthly field
-    if (key.endsWith("_monthly")) {
-      const yearlyKey = key.replace("_monthly", "");
-      updatedSalary[yearlyKey] = (parseFloat(value || 0) * 12).toFixed(2);
-      updatedSalary[key] = value;
-    } else {
-      updatedSalary[key] = value;
-    }
+  // 🔹 Special handling for PF so user can override (including 0)
+  if (key === "pf") {
+    const monthlyVal = parseFloat(value || 0);
 
-    setNewSalary(calculateSalary(updatedSalary));
-  };
+    updatedSalary.pf_manual = true;                 // mark as manual
+    updatedSalary.pf = isNaN(monthlyVal)
+      ? ""
+      : monthlyVal.toFixed(2);
+    updatedSalary.pf_yearly = isNaN(monthlyVal)
+      ? 0
+      : (monthlyVal * 12).toFixed(2);
+  } else if (key === "pf_yearly") {
+    const yearlyVal = parseFloat(value || 0);
+
+    updatedSalary.pf_manual = true;                 // mark as manual
+    updatedSalary.pf_yearly = isNaN(yearlyVal)
+      ? 0
+      : yearlyVal.toFixed(2);
+    updatedSalary.pf = isNaN(yearlyVal)
+      ? ""
+      : (yearlyVal / 12).toFixed(2);
+  }
+  // 🔸 existing logic for other monthly fields
+  else if (key.endsWith("_monthly")) {
+    const yearlyKey = key.replace("_monthly", "");
+    updatedSalary[yearlyKey] = (parseFloat(value || 0) * 12).toFixed(2);
+    updatedSalary[key] = value;
+  } else {
+    updatedSalary[key] = value;
+  }
+
+  setNewSalary(calculateSalary(updatedSalary));
+};
 
 
 const calculateSalary = (salary) => {
   const ctc_yearly = parseFloat(salary.ctc || 0);
   const tds = parseFloat(salary.tds || 0);
 
-  // Apply TDS deduction
   const effective_ctc = Math.max(ctc_yearly - tds, 0);
 
   const formatCurrency = (num) =>
@@ -508,7 +597,7 @@ const calculateSalary = (salary) => {
   const medical_allowance_yearly = 15000;
   const lta_yearly = 12000;
 
-  // ---------- INSURANCE LOGIC ----------
+  // ---------- INSURANCE LOGIC (unchanged) ----------
   const insurance_per_head_monthly =
     parseFloat(
       salary.insurance_per_head !== undefined
@@ -532,15 +621,23 @@ const calculateSalary = (salary) => {
     insurance_monthly_total * 12
   );
 
-  // Employer insurance SAME as employee insurance
   const employer_health_insurance_yearly = insurance_yearly;
 
-  // ---------- PF ----------
+  // ---------- PF (NOW OVERRIDABLE) ----------
   const basic_monthly = basic_pay_yearly / 12;
-  const pf_yearly =
-    (basic_monthly < 15000 ? basic_monthly * 0.12 : 1800) *
-    12;
-  const employer_pf_yearly = pf_yearly;
+
+  let pf_yearly;
+  if (salary.pf_manual) {
+    // use whatever user set
+    pf_yearly = parseFloat(salary.pf_yearly || 0);
+  } else {
+    // old auto-calculation
+    const pf_monthly_default =
+      basic_monthly < 15000 ? basic_monthly * 0.12 : 1800;
+    pf_yearly = pf_monthly_default * 12;
+  }
+
+  const employer_pf_yearly = pf_yearly; // company side same as employee
 
   // ---------- TOTAL PF & INSURANCE ----------
   const total_pf_yearly = pf_yearly + employer_pf_yearly;
@@ -558,7 +655,6 @@ const calculateSalary = (salary) => {
       employer_pf_yearly +
       employer_health_insurance_yearly);
 
-  // ---------- GROSS & NET ----------
   const gross_salary_yearly =
     basic_pay_yearly +
     hra_yearly +
@@ -583,7 +679,6 @@ const calculateSalary = (salary) => {
     ctc: ctc_yearly.toFixed(2),
     tds: tds,
 
-    // ---------- YEARLY ----------
     basic_pay_yearly,
     hra_yearly,
     conveyance_allowance_yearly,
@@ -617,12 +712,12 @@ const calculateSalary = (salary) => {
     gross_salary: monthly(gross_salary_yearly),
     professional_tax: monthly(professional_tax_yearly),
 
-    insurance: monthly(insurance_yearly), // employee
+    insurance: monthly(insurance_yearly),
     employer_health_insurance: monthly(
       employer_health_insurance_yearly
     ),
 
-    pf: monthly(pf_yearly), // employee PF
+    pf: monthly(pf_yearly),           // will be 0 if you set 0
     employer_pf: monthly(employer_pf_yearly),
 
     total_pf: monthly(total_pf_yearly),

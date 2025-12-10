@@ -256,51 +256,62 @@ function Home() {
             </Divider>
 
             {/* Search Bar */}
-            <Box
-              sx={{
-                width: "50%",
-                margin: "auto",
-                display: "flex",
-                gap: 1,
-                justifyContent: "center",
-              }}
-            >
-              <TextField
-                label="Search by Client Name"
-                variant="outlined"
-                fullWidth
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-              />
-              <Button
-                variant="contained"
-                color={searchInput ? "success" : "primary"}
-                onClick={async () => {
-                  if (searchInput) {
-                    setSearchTerm(searchInput); // search
-                  } else {
-                    await loadClients(); // load all clients
-                    setSearchTerm(""); // reset search filter
-                    setSearchInput(""); // clear input field
-                  }
-                }}
-                sx={{
-                  borderRadius: searchInput ? "50%" : 1,
-                  minWidth: 0,
-                  width: searchInput ? 52 : "auto",
-                  height: searchInput ? 47 : "auto",
-                  px: searchInput ? 0 : 4,
-                  py: searchInput ? 0 : 1,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontWeight: searchInput ? "normal" : "bold",
-                  backgroundColor: searchInput ? undefined : "rgba(106, 106, 232, 1)",
-                }}
-              >
-                {searchInput ? <SearchIcon /> : "Load"}
-              </Button>
-            </Box>
+           <Box
+  sx={{
+    width: "50%",
+    margin: "auto",
+    display: "flex",
+    gap: 1,
+    justifyContent: "center",
+    alignItems: "center", // important to align vertically
+  }}
+>
+  <TextField
+    label="Search by Client Name"
+    variant="outlined"
+    fullWidth
+    value={searchInput}
+    onChange={(e) => setSearchInput(e.target.value)}
+  />
+
+  <Button
+    variant="contained"
+    color={searchInput ? "success" : "primary"}
+    onClick={async () => {
+      if (searchInput) {
+        setSearchTerm(searchInput);
+      } else {
+        await loadClients();
+        setSearchTerm("");
+        setSearchInput("");
+      }
+    }}
+    sx={{
+      borderRadius: searchInput ? "50%" : 1,
+      minWidth: 0,
+      width: searchInput ? 52 : "auto",
+      height: searchInput ? 47 : "auto",
+      px: searchInput ? 0 : 4,
+      py: searchInput ? 0 : 1,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontWeight: searchInput ? "normal" : "bold",
+      backgroundColor: searchInput ? undefined : "rgba(106, 106, 232, 1)",
+    }}
+  >
+    {searchInput ? <SearchIcon /> : "Load"}
+  </Button>
+
+  {/* Smaller Total Clients text */}
+  <Typography
+    variant="body2"        // smaller text
+    sx={{ fontWeight: "bold", ml: 1, whiteSpace: "nowrap" }}
+  >
+    Total Number of Clients: {clients.length}
+  </Typography>
+</Box>
+
           </Box>
 
           {/* Table: Scrollable Body */}

@@ -709,7 +709,7 @@ const AccountsSection = () => {
               >
                 <MenuItem value="Capital">Capital</MenuItem>
                 <MenuItem value="Current">Current</MenuItem>
-                <MenuItem value="Current">Kitty</MenuItem>
+               
                
               </TextField>
               <TextField
