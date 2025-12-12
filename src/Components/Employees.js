@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from "react";
 import {
   Table, TableHead, TableBody, TableCell, TableRow,
@@ -65,43 +64,112 @@ function Employees() {
     }
   }, [selectedEmp]);
 
-  // Fetch employees on mount
+  // --- Updated mount: restore sessionStorage if present, otherwise fetch master list ---
   useEffect(() => {
-    fetchEmployees();
+    // Clear last search result when opening the Employee dashboard
+sessionStorage.removeItem("employeesLoaded");
+setSearchName("");  // also clear the search box
+
+    const saved = sessionStorage.getItem("employeesLoaded");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setEmployees(parsed);
+        setLoaded(true);
+        // ensure master copy is at least the same as displayed (so searches work)
+        setAllEmployees((prev) => (prev && prev.length ? prev : parsed));
+        // still fetch fresh master list in background to keep data up to date
+        fetchEmployees();
+      } catch (e) {
+        // if parse fails, just fetch from server
+        fetchEmployees();
+      }
+    } else {
+      fetchEmployees();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // --- fetchEmployees now returns the fetched data so callers can await it ---
   const fetchEmployees = async () => {
     try {
       const res = await axios.get("http://localhost:7760/getemployees");
-      setAllEmployees(res.data || []);
+      const data = res.data || [];
+      setAllEmployees(data);
       // If previously loaded, refresh displayed list too
       if (loaded) {
-        setEmployees(res.data || []);
+        setEmployees(data);
+        sessionStorage.setItem("employeesLoaded", JSON.stringify(data));
       }
+      return data;
     } catch (err) {
       console.error("Error fetching employees:", err);
+      return [];
     }
   };
 
   const handleLoadEmployees = () => {
-    setEmployees(allEmployees);
-    setLoaded(true);
-    sessionStorage.setItem("employeesLoaded", JSON.stringify(allEmployees));
-  };
+  setEmployees(allEmployees);
+  setLoaded(true);
 
-  const handleSearch = () => {
-    if (!loaded) return;
-    const filtered = allEmployees.filter(emp =>
-      (emp.employee_name || "").toLowerCase().includes(searchName.toLowerCase())
+  // CLEAR previous selection / form data so modal won't show stale search results
+  setSelectedEmp(null);
+  setFormData({});
+  setIsEditing(false);
+
+  // clear saved search result so refreshes don't restore the old filtered list
+  sessionStorage.removeItem("employeesLoaded");
+
+  // (optional) clear the search input so button returns to "Load Employees"
+  setSearchName("");
+};
+
+
+  // --- Updated handleSearch: will fetch master list if empty and then filter ---
+  const handleSearch = async () => {
+    // ensure we have master data
+    let master = allEmployees;
+    if (!master || master.length === 0) {
+      master = await fetchEmployees();
+    }
+
+    const query = (searchName || "").trim().toLowerCase();
+
+    if (!query) {
+      // If empty query, show full list
+      setEmployees(master);
+      sessionStorage.setItem("employeesLoaded", JSON.stringify(master));
+      setLoaded(true);
+      return;
+    }
+
+    const filtered = master.filter(emp =>
+      (emp.employee_name || "").toLowerCase().includes(query)
     );
+
     setEmployees(filtered);
     sessionStorage.setItem("employeesLoaded", JSON.stringify(filtered));
+    setLoaded(true); // optional but keeps UI consistent (so table shows)
   };
 
-  const handleRowClick = (emp) => {
-    setSelectedEmp(emp);
+const handleRowClick = (emp) => {
+  if (loaded) {
+    // MODE: loaded → open modal empty
+    setSelectedEmp(null);   // ensure selectedEmp is cleared
+    setFormData({});        // ensure formData is cleared (prevents stale display)
+    setIsEditing(false);
     setOpenEmployee(true);
-  };
+  } else {
+    // MODE: not-loaded (search-before-load) → open modal with clicked emp details
+    setSelectedEmp(emp);
+    setFormData(emp);       // set immediately so modal shows data
+    setIsEditing(false);
+    setOpenEmployee(true);
+  }
+};
+
+
+
 
   const handleCloseModal = () => {
     setOpenEmployee(false);
@@ -271,6 +339,12 @@ function Employees() {
             value={searchName}
             style={{ width: "300px" }}
             onChange={(e) => setSearchName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                // on Enter run search (if text) or load all
+                searchName ? handleSearch() : handleLoadEmployees();
+              }
+            }}
           />
           <Button
             style={{ fontWeight: "bold", backgroundColor: "rgba(106, 106, 232, 1)" }}

@@ -137,32 +137,60 @@ function Projects() {
     }
   };
 
-  const [newProject, setNewProject] = useState({
-    clientID: "",
-    startDate: "",
-    endDate: "",
-    projectName: "",
-    projectDescription: "",
-    skill: "",
-    projectLocation: "",
-    spoc: "",
-    mailID: "",
-    mobileNo: "",
-    billingType: "",
-    billRate: "",
-    monthlyBilling: "",
-    employeeID: [],
-    employeeName: [],
-    employees: [], // ✅ used by employee selector
-    employeeDetails: [], // ✅ for backend clarity if needed
-    hoursOrDays: 0,
-    poNumber: "NA",
-    purchaseOrder: null,
-    purchaseOrderPreview: null,
-    purchaseOrderValue: "NA",
-    active: "Yes",
-    invoiceCycle: "Monthly",
-  });
+  // const [newProject, setNewProject] = useState({
+  //   clientID: "",
+  //   startDate: "",
+  //   endDate: "",
+  //   projectName: "",
+  //   projectDescription: "",
+  //   skill: "",
+  //   projectLocation: "",
+  //   spoc: "",
+  //   mailID: "",
+  //   mobileNo: "",
+  //   billingType: "",
+  //   billRate: "",
+  //   monthlyBilling: "",
+  //   employeeID: [],
+  //   employeeName: [],
+  //   employees: [], // ✅ used by employee selector
+  //   employeeDetails: [], // ✅ for backend clarity if needed
+  //   hoursOrDays: 0,
+  //   poNumber: "NA",
+  //   purchaseOrder: null,
+  //   purchaseOrderPreview: null,
+  //   purchaseOrderValue: "NA",
+  //   active: "Yes",
+  //   invoiceCycle: "Monthly",
+  // });
+// Put this near the top of the component (above useState calls)
+const initialNewProject = {
+  clientID: "",
+  startDate: "",
+  endDate: "",
+  projectName: "",
+  projectDescription: "",
+  skill: "",
+  projectLocation: "",
+  spoc: "",
+  mailID: "",
+  mobileNo: "",
+  billingType: "",
+  billRate: "",
+  monthlyBilling: "",
+  employeeID: [],
+  employeeName: [],
+  employees: [], // used by employee selector (IDs or details depending on your logic)
+  employeeDetails: [], // for backend clarity if needed
+  hoursOrDays: 0,
+  poNumber: "NA",
+  purchaseOrder: null,
+  purchaseOrderPreview: null,
+  purchaseOrderValue: "NA",
+  active: "Yes",
+  invoiceCycle: "Monthly",
+};
+const [newProject, setNewProject] = useState(initialNewProject);
 
   // Fetch existing projects
   useEffect(() => {
@@ -351,15 +379,66 @@ const handleSearch = (maybeQuery) => {
         body: formData,
       });
 
-      if (!response.ok) throw new Error("Failed to add project");
+      // if (!response.ok) throw new Error("Failed to add project");
 
-      const saved = await response.json();
-      setProjects([...projects, saved]);
-      setOpen(false);
-      setSuccessMessage("✅ Project added successfully!");
+      // const saved = await response.json();
+      // setProjects([...projects, saved]);
+      // setOpen(false);
+      // setSuccessMessage("✅ Project added successfully!");
 
-      // Auto-hide success message after 3 seconds
-      setTimeout(() => setSuccessMessage(""), 3000);
+      // // Auto-hide success message after 3 seconds
+      // setTimeout(() => setSuccessMessage(""), 3000);
+   // --- inside handleSubmit(), replace the successful-save branch with this ---
+if (!response.ok) throw new Error("Failed to add project");
+
+// inside handleSubmit() after POST succeeds
+const saved = await response.json();
+
+// update local lists quickly (optional optimistic update)
+setProjects(prev => [...(prev||[]), saved]);
+setAllProjects(prev => [...(prev||[]), saved]);
+
+// ensure table shows immediately
+setLoaded(true);
+
+// now fetch full/authoritative project data from server
+try {
+  // Option A1: fetch single project endpoint if available
+  // const full = await fetch(`http://localhost:7760/getproject/${saved.projectID}`).then(r => r.json());
+
+  // Option A2: if no single endpoint, re-fetch all and pick the saved one
+  const refreshed = await fetch("http://localhost:7760/getprojects").then(r => r.json());
+  setAllProjects(refreshed);
+  setProjects(refreshed);
+
+  const full = Array.isArray(refreshed) ? refreshed.find(p => p.projectID === saved.projectID) : saved;
+
+  if (full) {
+    // make preview-ready
+    setSelectedProject(full);
+    setFormValues(full);
+  } else {
+    // fallback: use the saved payload
+    setSelectedProject(saved);
+    setFormValues(saved);
+  }
+} catch (err) {
+  console.error("Failed to fetch full project after save:", err);
+  // fallback to saved object
+  setSelectedProject(saved);
+  setFormValues(saved);
+}
+
+// cleanup UI + reset form
+if (newProject.purchaseOrderPreview && newProject.purchaseOrder instanceof File) {
+  URL.revokeObjectURL(newProject.purchaseOrderPreview);
+}
+setNewProject(initialNewProject); // if you implemented it
+setOpen(false);
+setSuccessMessage("✅ Project added successfully!");
+setTimeout(() => setSuccessMessage(""), 3000);
+
+
     } catch (error) {
       console.error("Error adding project:", error);
       setSuccessMessage("❌ Failed to add project");
@@ -810,6 +889,7 @@ const handleSearch = (maybeQuery) => {
                   <MenuItem value="Hour">Hour</MenuItem>
                   <MenuItem value="Day">Day</MenuItem>
                   <MenuItem value="Month">Month</MenuItem>
+                  
                 </TextField>
 
                 <TextField
@@ -1240,13 +1320,33 @@ const handleSearch = (maybeQuery) => {
         color="primary"
         aria-label="add"
         sx={{ position: "fixed", bottom: 20, right: 20 }}
-        onClick={() => setOpen(true)}
+        // onClick={() => setOpen(true)}
+        onClick={() => {
+  // reset form to blank when opening Add dialog
+  setNewProject(initialNewProject);
+  setOpen(true);
+}}
+
       >
         <AddIcon />
       </Fab>
 
       {/* Add Project Dialog */}
-      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>
+     <Dialog
+  open={open}
+  onClose={() => {
+    setOpen(false);
+    // clear the form when user closes the add dialog
+    // revoke preview URL if created
+    if (newProject.purchaseOrderPreview && newProject.purchaseOrder instanceof File) {
+      URL.revokeObjectURL(newProject.purchaseOrderPreview);
+    }
+    setNewProject(initialNewProject);
+  }}
+  maxWidth="md"
+  fullWidth
+>
+
         <DialogTitle style={{ fontWeight: "bold" }}>Add New Project</DialogTitle>
         <DialogContent dividers>
           {/* Row 1 */}
@@ -1795,9 +1895,23 @@ const handleSearch = (maybeQuery) => {
         </DialogContent>
 
         <DialogActions>
-          <Button color="warning" onClick={() => setOpen(false)}>
+          {/* <Button color="warning" onClick={() => setOpen(false)}>
             Cancel
-          </Button>
+          </Button> */}
+        <Button
+  color="warning"
+  onClick={() => {
+    setOpen(false);
+    if (newProject.purchaseOrderPreview && newProject.purchaseOrder instanceof File) {
+      URL.revokeObjectURL(newProject.purchaseOrderPreview);
+    }
+    setNewProject(initialNewProject);
+  }}
+>
+  Cancel
+</Button>
+
+
           <Button onClick={handleSubmit} variant="contained" color="success">
             Save
           </Button>
