@@ -53,8 +53,67 @@ const [receivedModalOpen, setReceivedModalOpen] = useState(false);
 const [mode, setMode] = useState("Raised"); // "Raised" or "Received"
 const [calculatedValues,setCalculatedValues]= useState([]);
 const [billableError, setBillableError] = useState("");
+const [invoiceSearch, setInvoiceSearch] = useState("");
+const [searchText, setSearchText] = useState("");
 
 
+const generateInvoiceNumber = (clientName, invoiceDate = new Date()) => {
+  if (!clientName) return "";
+
+  const prefix = "INV";
+  const clientCode = clientName
+    .replace(/\s+/g, "")   // remove spaces
+    .substring(0, 3)
+    .toUpperCase();
+
+  const d = new Date(invoiceDate);
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = d.getFullYear();
+
+  return `${prefix}${clientCode}${month}${year}`;
+};
+
+
+const getProjectNameById = (projectId) => {
+  if (!projectId) return "-";
+
+  return (
+    activeProjects.find(p => String(p.projectID) === String(projectId))?.projectName ||
+    projects.find(p => String(p.projectID) === String(projectId))?.projectName ||
+    "-"
+  );
+};
+const safeIncludes = (value, query) => {
+  if (!value || !query) return false;
+  return String(value).toLowerCase().includes(query);
+};
+
+
+const toYearMonth = (value) => {
+  if (!value) return "";
+
+  // If already YYYY-MM
+  if (/^\d{4}-\d{2}$/.test(value)) return value;
+
+  // If YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value.slice(0, 7);
+  }
+
+  // If DD/MM/YYYY
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
+    const [dd, mm, yyyy] = value.split("/");
+    return `${yyyy}-${mm}`;
+  }
+
+  // Fallback (Date object or anything else)
+  const d = new Date(value);
+  if (!isNaN(d)) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  return "";
+};
 
 // State to track if invoice is raised
 const [isRaised, setIsRaised] = useState(false);
@@ -90,9 +149,7 @@ useEffect(() => {
   }
 }, [showTotal, activeProjects]);
 
-
-
-  const [actualValue,setActualValue] = useState();
+const [actualValue,setActualValue] = useState();
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const initialInvoiceState = {
   invoice_number: "",
@@ -142,20 +199,11 @@ setNewInvoice(initialInvoiceState);
       .catch((err) => console.error(err));
   }
 
- // For previewing existing invoice or project invoice
-// const handlePreview = (proj) => {
-//   setSelectedProject(proj);   // Save project/invoice to preview
-//   setNewInvoice(proj);        // If you want to show invoice fields in preview
-//   setOpenPreview(true);       // Open preview dialog
-// };
-
-
 // Show preview before saving 
 const handleFormPreview = () => { setOpenPreview(true); };
-
-
   // Add invoice
 const handleAddInvoice = async () => {
+ 
   try {
     // 🔹 Required fields validation
     const requiredFields = [
@@ -198,12 +246,12 @@ const handleAddInvoice = async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(invoiceToSend),
     });
-
+   
     const data = await res.json();
 
     if (res.ok && data.success) {
       fetchInvoices();
-      setOpenDialog(false);
+      setOpenDialog(false); 
       setOpenPreview(false);
       setCalculatedValues("");
       setNewInvoice({
@@ -238,8 +286,6 @@ const handleAddInvoice = async () => {
   }
 };
 
-
-
   const handleDownloadPDF = () => {
   const input = document.getElementById("invoice-preview");
   html2canvas(input, { scale: 2 }).then((canvas) => {
@@ -252,8 +298,6 @@ const handleAddInvoice = async () => {
     pdf.save(`Invoice_${newInvoice.invoice_number || "Preview"}.pdf`);
   });
 };
-
-
 const addDays = (dateStr, days) => {
   const date = new Date(dateStr);
   date.setDate(date.getDate() + days);
@@ -313,12 +357,23 @@ useEffect(() => {
 }, [view]);
 
 const filteredProjects = activeProjects.filter((proj) => {
-  // Month-Year filter
+  const q = searchText.trim().toLowerCase();
+
+  // 🔍 SEARCH FILTER
+  let searchMatch = true;
+  if (q) {
+    searchMatch =
+      safeIncludes(proj.projectID, q) ||
+      safeIncludes(proj.projectName, q) ||
+      safeIncludes(proj.clientName, q);
+  }
+
+  // 📅 Month-Year filter
   let monthYearMatch = true;
   if (filterMonthYear) {
     const [year, month] = filterMonthYear.split("-").map(Number);
     const filterStart = new Date(year, month - 1, 1);
-    const filterEnd = new Date(year, month, 0); // last day of month
+    const filterEnd = new Date(year, month, 0);
 
     const start = new Date(proj.startDate);
     const end = new Date(proj.endDate);
@@ -326,41 +381,68 @@ const filteredProjects = activeProjects.filter((proj) => {
     monthYearMatch = start <= filterEnd && end >= filterStart;
   }
 
-  // Invoice Raised filter
+  // 📄 Invoice Raised filter
   let invoiceMatch = true;
   if (invoiceFilter === "Yes") invoiceMatch = Boolean(proj.invoice_date);
   else if (invoiceFilter === "No") invoiceMatch = !proj.invoice_date;
 
-  return monthYearMatch && invoiceMatch;
+  return searchMatch && monthYearMatch && invoiceMatch;
 });
+
 
 const [receivedFilter, setReceivedFilter] = useState("All");
 
 const filteredInvoices = invoices.filter((inv) => {
-  // 1️⃣ Filter by month/year if provided
+  const q = searchText.trim().toLowerCase();
+
+  // 🔍 SEARCH FILTER
+  let searchMatch = true;
+  if (q) {
+    const projectName = getProjectNameById(inv.project_id);
+
+    searchMatch =
+      safeIncludes(inv.invoice_number, q) ||
+      safeIncludes(inv.client_name, q) ||
+      (projectName !== "-" && safeIncludes(projectName, q));
+  }
+
+  // 📅 Month filter
   let monthYearMatch = true;
   if (filterMonthYear) {
     const [year, month] = filterMonthYear.split("-").map(Number);
-    const invoiceDate = new Date(inv.invoice_date);
+    const d = new Date(inv.invoice_date);
     monthYearMatch =
-      invoiceDate.getMonth() === month - 1 &&
-      invoiceDate.getFullYear() === year;
+      d.getFullYear() === year && d.getMonth() === month - 1;
   }
 
-  // 2️⃣ Filter by Received status
+  // 📥 Received filter
   let receivedMatch = true;
-  if (receivedFilter && receivedFilter !== "All") {
+  if (receivedFilter !== "All") {
     receivedMatch = inv.received === receivedFilter;
   }
 
-  // 3️⃣ Return only if both conditions match
-  return monthYearMatch && receivedMatch;
+  return searchMatch && monthYearMatch && receivedMatch;
 });
 
 const filteredReceivedInvoices = receivedMonthInvoices.filter((inv) => {
-  if (receivedFilter === "All") return true;
-  return inv.received?.toLowerCase() === receivedFilter.toLowerCase();
+  const q = searchText.trim().toLowerCase();
+
+  let searchMatch = true;
+  if (q) {
+    const projectName = getProjectNameById(inv.project_id);
+
+    searchMatch =
+      safeIncludes(inv.invoice_number, q) ||
+      safeIncludes(inv.client_name, q) ||
+      (projectName !== "-" && safeIncludes(projectName, q));
+  }
+
+  if (receivedFilter === "All") return searchMatch;
+  return searchMatch && inv.received === receivedFilter;
 });
+useEffect(() => {
+  setSearchText("");
+}, [view]);
 
 // Calculate received total
 // Total of only "Yes" invoices
@@ -379,23 +461,9 @@ const totalPending = receivedMonthInvoices.reduce(
       : sum,
   0
 );
-
-// // Utility functions
-// const getPrevMonthStart = (dateStr) => {
-//   const date = dateStr ? new Date(dateStr) : new Date();
-//   return new Date(date.getFullYear(), date.getMonth() - 1, 1)
-//     .toISOString()
-//     .split("T")[0];
-// };
-
-// const getPrevMonthEnd = (dateStr) => {
-//   const date = dateStr ? new Date(dateStr) : new Date();
-//   return new Date(date.getFullYear(), date.getMonth(), 0) // 0 = last day of prev month
-//     .toISOString()
-//     .split("T")[0];
-// };
-
 useEffect(() => {
+  if (selectedProject?.isFixed === "Yes") return;
+
   if (isRaised && selectedProject?.invoiceCycle) {
     const cycle = selectedProject.invoiceCycle;
     const { invoiceValue, gstAmount } = calculateInvoiceValue(
@@ -423,28 +491,31 @@ const formatDate = (dateString) => {
   return `${day}-${month}-${year}`;
 };
 
-// Auto-calculate invoice value and GST whenever relevant data changes
+
 useEffect(() => {
   if (!selectedProject || !selectedClient) return;
 
-  const cycle = selectedProject.invoiceCycle || "Monthly";
-  const gstPercentage = selectedClient.gstPercentage || 0;
+  // ✅ DO NOT override values set by Raise button
+  if (selectedProject.isFixed === "Yes" && isRaised) return;
 
-  const { invoiceValue, gstAmount } = calculateInvoiceValue(
+  const cycle = selectedProject.invoiceCycle || "Monthly";
+
+  const calc = calculateInvoiceValue(
     cycle,
     selectedProject.non_billable_days || 0,
-    selectedProject,
-    gstPercentage
+    selectedProject
   );
 
   setNewInvoice((prev) => ({
     ...prev,
-    invoice_cycle: cycle,
-    invoice_value: invoiceValue,
-    gst_amount: gstAmount,
+    base_value: calc.base_value,
+    gst_amount: calc.gst_amount,
+    tds_amount: calc.tds_amount,
+    invoice_value: calc.invoice_value,
   }));
-}, [selectedClient, selectedProject]);
 
+  setCalculatedValues(calc);
+}, [selectedClient, selectedProject, isRaised]);
 
 // Save edited Invoice newInvoice.non_billable_days,
 const handleSaveInvoice = async (updatedInvoice) => {
@@ -475,42 +546,6 @@ const handleSaveInvoice = async (updatedInvoice) => {
     console.error("Error updating invoice:", err);
   }
 };
-// Updating Recieved Status
-// const handleSaveReceived = async () => {
-//   if (!editingReceivedInvoice) return;
-
-//   try {
-//     const res = await fetch(
-//       `http://localhost:7760/updateinvoices/${editingReceivedInvoice.id}`,
-//       {
-//         method: "PUT",
-//         headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify(editingReceivedInvoice),
-//       }
-//     );
-
-//     if (!res.ok) throw new Error("Failed to update received status");
-
-//     const updatedInvoice = await res.json();
-
-//     // Update local state immediately
-//     setRecievedMonthInvoices((prev) =>
-//       prev.map((inv) =>
-//         inv.id === updatedInvoice.id ? { ...inv, ...updatedInvoice } : inv
-//       )
-//     );
-
-//     setReceivedModalOpen(false);
-//     setEditingReceivedInvoice(null);
-
-//     // ✅ Show success alert
-//     alert("Received status updated successfully!");
-//   } catch (err) {
-//     console.error("Error updating received status:", err);
-//     alert("Failed to update received status.");
-//   }
-// };
-
 const handleSaveReceived = async () => {
   if (!editingReceivedInvoice) return;
 
@@ -604,8 +639,6 @@ const handleDeleteInvoice = async (invoiceId) => {
   }
 };
 
-
-
 // -------- getRaiseEligibility.js --------
 /**
  * Determine whether a project can raise an invoice in the selected month
@@ -639,6 +672,25 @@ const getRaiseEligibilityForMonth = (project, selectedMonth) => {
     selectedDate.getMonth() === nextRaiseDate.getMonth();
 
   return { canRaise, nextRaiseDate };
+};
+const applyFixedProjectMilestone = (project, selectedMonth) => {
+  if (!project || project.isFixed !== "Yes") return null;
+  if (!selectedMonth) return null;
+
+  const targetMonth = toYearMonth(selectedMonth);
+
+  const milestone = project.milestones?.find(
+    (m) => toYearMonth(m.invoiceMonth) === targetMonth
+  );
+
+  if (!milestone) return null;
+
+  return {
+    base_value: Number(milestone.baseValue) || 0,
+    gst_amount: Number(milestone.gstAmount) || 0,
+    tds_amount: Number(milestone.tdsAmount) || 0,
+    invoice_value: Number(milestone.netPayable) || 0,
+  };
 };
 
 const calculateInvoiceValue = (cycle, billableDays, project) => {
@@ -705,8 +757,6 @@ console.log(`Base=${base_value}, GST=${gst_amount}, TDS=${tds_amount}, Total=${i
   }
 };
 
-
-
 const handleBillableChange = (e) => {
   const billable = Number(e.target.value) || 0;
 
@@ -747,13 +797,38 @@ const handleBillableChange = (e) => {
   setCalculatedValues(calc);
 };
 
-
 useEffect(() => {
-  if (selectedProject && selectedProject.billingType === "Month") {
-    // Automatically calculate monthly invoice
+  if (!selectedProject) return;
+
+  // ✅ FIXED PROJECT → USE MILESTONE ONLY
+  if (selectedProject.isFixed === "Yes") {
+    const fixedCalc = applyFixedProjectMilestone(
+      selectedProject,
+      toYearMonth(filterMonthYear || selectedProject.startDate)
+    );
+
+    if (!fixedCalc) return;
+
+    setNewInvoice((prev) => ({
+      ...prev,
+      base_value: fixedCalc.base_value,
+      gst_amount: fixedCalc.gst_amount,
+      tds_amount: fixedCalc.tds_amount,
+      invoice_value: fixedCalc.invoice_value,
+
+      // ✅ FIX: invoice_cycle MUST stay Monthly / Quarterly
+      invoice_cycle: selectedProject.invoiceCycle || "Monthly",
+    }));
+
+    setCalculatedValues(fixedCalc);
+    return;
+  }
+
+  // ⬇️ EXISTING MONTHLY LOGIC (UNCHANGED)
+  if (selectedProject.billingType === "Month") {
     const calc = calculateInvoiceValue(
       selectedProject.invoiceCycle || "Monthly",
-      0, // billable days not relevant for Monthly type
+      0,
       selectedProject
     );
 
@@ -769,11 +844,7 @@ useEffect(() => {
 
     setCalculatedValues(calc);
   }
-}, [selectedProject]);
-
-
-
-
+}, [selectedProject, filterMonthYear]);
 
 
   return (
@@ -799,40 +870,53 @@ useEffect(() => {
     borderRadius: "10px"
   }}
 >
-  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-    <Button
-      variant={view === "activeProjects" ? "contained" : "outlined"}
-      onClick={() => setView("activeProjects")}
-    >
-      Active Projects
-    </Button>
-    <Button
-      variant={view === "invoices" ? "contained" : "outlined"}
-      onClick={() => setView("invoices")}
-    >
-      Raised Invoices
-    </Button>
-    <Button
-      variant={view === "receivedInvoices" ? "contained" : "outlined"}
-      onClick={() => setView("receivedInvoices")}
-    >
-      Received Invoices
-    </Button>
 
-    <input
-      type="month"
-      value={month}
-      onChange={(e) => setMonth(e.target.value)}
-      style={{ padding: "6px", marginLeft: "10px" }}
-    />
-    <Button
-      variant="outlined"
-      color="error"
-      onClick={() => setFilterMonthYear(month)}
-    >
-      Search
-    </Button>
-  </div>
+<div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+  <Button
+    variant={view === "activeProjects" ? "contained" : "outlined"}
+    onClick={() => setView("activeProjects")}
+  >
+    Active Projects
+  </Button>
+
+  <Button
+    variant={view === "invoices" ? "contained" : "outlined"}
+    onClick={() => setView("invoices")}
+  >
+    Raised Invoices
+  </Button>
+
+  <Button
+    variant={view === "receivedInvoices" ? "contained" : "outlined"}
+    onClick={() => setView("receivedInvoices")}
+  >
+    Received Invoices
+  </Button>
+
+  {/* 🔍 SEARCH */}
+  <TextField
+    size="small"
+    placeholder="Search Invoice / Project / Client"
+    value={searchText}
+    onChange={(e) => setSearchText(e.target.value)}
+    sx={{ width: 260 }}
+  />
+
+  <input
+    type="month"
+    value={month}
+    onChange={(e) => setMonth(e.target.value)}
+    style={{ padding: "6px" }}
+  />
+
+  <Button
+    variant="outlined"
+    color="error"
+    onClick={() => setFilterMonthYear(month)}
+  >
+    Search
+  </Button>
+</div>
 
  {!showTotal ? (
   <Button
@@ -911,7 +995,6 @@ useEffect(() => {
   </div>
 )}
 
-  
 </div>
 
   <Divider style={{marginTop:"250px",fontWeight:"bold",fontFamily:"monospace",fontSize:"16px",marginBottom:"15px"}}>
@@ -1028,7 +1111,7 @@ useEffect(() => {
                     ? new Intl.DateTimeFormat("en-GB").format(new Date(proj.invoice_date))
                     : "-"}
                 </TableCell>
-               <TableCell>
+               {/* <TableCell>
   {proj.invoice_date ? (
     // ✅ Already raised
     <Button
@@ -1044,11 +1127,154 @@ useEffect(() => {
   ) : (
     (() => {
       // ✅ Use the selected month from your filter
-      const { canRaise, nextRaiseDate } = getRaiseEligibilityForMonth(
-        proj,
-        filterMonthYear || month // fallback to current month if not selected
+    const { canRaise, nextRaiseDate } = getRaiseEligibilityForMonth(
+  proj,
+  toYearMonth(filterMonthYear || proj.startDate)
+);
+
+// const selectedMonthForInvoice =
+//   filterMonthYear || new Date().toISOString().slice(0, 7);
+const selectedMonthForInvoice = toYearMonth(
+  filterMonthYear || proj.startDate
+);
+const fixedCalc =
+  proj.isFixed === "Yes"
+    ? applyFixedProjectMilestone(proj, selectedMonthForInvoice)
+    : null;
+
+if (proj.isFixed === "Yes" && !fixedCalc) {
+  return (
+    <Button variant="outlined" size="small" disabled>
+      No milestone for {selectedMonthForInvoice}
+    </Button>
+  );
+}
+
+if (canRaise) {
+  return (
+    <Button
+      variant="contained"
+      color="secondary"
+      size="small"
+      onClick={() => {
+
+        // ✅ SAFE CLIENT (NO LOGIC CHANGE)
+        const safeClient = client || {
+          id: proj.clientID,
+          clientName: proj.clientName,
+          paymentTerms: proj.paymentTerms || 0,
+        };
+
+        // 1️⃣ Set selected project & client
+        setSelectedProject(proj);
+        setSelectedClient(safeClient);
+
+        // 2️⃣ Generate invoice number
+        const now = new Date();
+        const month = String(now.getMonth() + 1).padStart(2, "0");
+        const year = now.getFullYear();
+
+       const invoiceNumber = generateInvoiceNumber(
+  safeClient.clientName,
+  new Date()
+);
+
+
+        // 3️⃣ Fixed milestone (UNCHANGED)
+        const selectedMonthForInvoice =
+          filterMonthYear || new Date().toISOString().slice(0, 7);
+
+        const fixedCalc =
+          proj.isFixed === "Yes"
+            ? applyFixedProjectMilestone(proj, selectedMonthForInvoice)
+            : null;
+
+        // 4️⃣ ALWAYS CALCULATE FROM PROJECT
+        let calc;
+
+        if (fixedCalc) {
+          calc = fixedCalc;
+        } else {
+          calc = calculateInvoiceValue(
+            proj.invoiceCycle || "Monthly",
+            0,
+            proj
+          );
+        }
+
+        setCalculatedValues(calc);
+
+        // 5️⃣ Set invoice (ONLY invoice_cycle FIXED)
+        setNewInvoice({
+          ...initialInvoiceState,
+          invoice_number: invoiceNumber,
+          invoice_date: new Date().toISOString().split("T")[0],
+          client_name: safeClient.clientName,
+          project_id: proj.projectID,
+
+          // ✅ FIX: NEVER "Milestone"
+          invoice_cycle: proj.invoiceCycle || "Monthly",
+
+          base_value: calc.base_value,
+          gst_amount: calc.gst_amount,
+          tds_amount: calc.tds_amount,
+          invoice_value: calc.invoice_value,
+
+          received: "No",
+        });
+
+        // 6️⃣ Open dialog
+        setIsRaised(true);
+        setOpenDialog(true);
+      }}
+    >
+      Raise
+    </Button>
+  );
+}
+    })()
+  )}
+</TableCell> */}
+
+<TableCell>
+  {proj.invoice_date ? (
+    // ✅ Already raised
+    <Button
+      variant="outlined"
+      size="small"
+      onClick={() => {
+        setSelectedInvoice(proj);
+        setOpenPreview(true);
+      }}
+    >
+      View
+    </Button>
+  ) : (
+    (() => {
+      const selectedMonthForInvoice = toYearMonth(
+        filterMonthYear || proj.startDate
       );
 
+      const { canRaise, nextRaiseDate } = getRaiseEligibilityForMonth(
+        proj,
+        selectedMonthForInvoice
+      );
+
+      const fixedCalc =
+        proj.isFixed === "Yes"
+          ? applyFixedProjectMilestone(proj, selectedMonthForInvoice)
+          : null;
+
+      // ✅ Fixed project but no milestone this month
+      if (proj.isFixed === "Yes" && !fixedCalc) {
+        return (
+          <Button variant="outlined" size="small" disabled>
+            No milestone for {selectedMonthForInvoice}
+          </Button>
+        );
+      }
+
+      // ✅ Eligible to raise
       if (canRaise) {
         return (
           <Button
@@ -1056,65 +1282,74 @@ useEffect(() => {
             color="secondary"
             size="small"
             onClick={() => {
-              const client = clients.find(
-                (c) =>
-                  c.clientID === proj.clientID || c.clientName === proj.clientName
-              );
-              setSelectedClient(client || null);
-              setProjects(client?.projects || []);
-              setSelectedProject(proj);
-            
-              const now = new Date();
-              const m = String(now.getMonth() + 1).padStart(2, "0");
-              const y = now.getFullYear();
-
-              const invoiceValue = proj.invoice_value || 0;
-              const gstAmount = client?.gstPercentage
-                ? (invoiceValue * client.gstPercentage) / 100
-                : 0;
-
-              const invoiceData = {
-                ...initialInvoiceState,
-                client_name: proj.clientName?.trim() || "",
-                project_id: String(proj.projectID) || "",
-                invoice_number: `${proj.clientName?.trim() || "Client"}-${proj.projectID}-${m}${y}`,
-                // start_date: proj.startDate || "",
-                // end_date: proj.endDate || "",
-                start_date: "",
-                end_date: "",
-                invoice_value: invoiceValue,
-                gst_amount: gstAmount,
-                due_date: proj.due_date || "",
-                invoice_cycle: proj.invoiceCycle || "",
-                non_billable_days: proj.non_billable_days || "",
-                received: "No",
+              const safeClient = client || {
+                id: proj.clientID,
+                clientName: proj.clientName,
+                paymentTerms: proj.paymentTerms || 0,
               };
 
-              setNewInvoice(invoiceData);
+              setSelectedProject(proj);
+              setSelectedClient(safeClient);
+
+              const invoiceNumber = generateInvoiceNumber(
+                safeClient.clientName,
+                new Date()
+              );
+
+              const fixedCalc =
+                proj.isFixed === "Yes"
+                  ? applyFixedProjectMilestone(
+                      proj,
+                      selectedMonthForInvoice
+                    )
+                  : null;
+
+              const calc = fixedCalc
+                ? fixedCalc
+                : calculateInvoiceValue(
+                    proj.invoiceCycle || "Monthly",
+                    0,
+                    proj
+                  );
+
+              setCalculatedValues(calc);
+
+              setNewInvoice({
+                ...initialInvoiceState,
+                invoice_number: invoiceNumber,
+                invoice_date: new Date().toISOString().split("T")[0],
+                client_name: safeClient.clientName,
+                project_id: proj.projectID,
+                invoice_cycle: proj.invoiceCycle || "Monthly",
+                base_value: calc.base_value,
+                gst_amount: calc.gst_amount,
+                tds_amount: calc.tds_amount,
+                invoice_value: calc.invoice_value,
+                received: "No",
+              });
+
               setIsRaised(true);
               setOpenDialog(true);
-              handleRaise(invoiceData);
-              console.log(invoiceData)
-              console.log(selectedProject)
             }}
           >
             Raise
           </Button>
         );
-      } else {
-        return (
-          <Button variant="outlined" size="small" disabled>
-            Next:{" "}
-            {nextRaiseDate
-              ? new Intl.DateTimeFormat("en-GB", {
-                  day: "2-digit",
-                  month: "short",
-                  year: "numeric",
-                }).format(nextRaiseDate)
-              : "-"}
-          </Button>
-        );
       }
+
+      // 🔴 🔴 🔴 THIS WAS MISSING (ONLY ADDITION)
+      return (
+        <Button variant="outlined" size="small" disabled>
+          Next raise:{" "}
+          {nextRaiseDate
+            ? new Date(nextRaiseDate).toLocaleString("en-GB", {
+                month: "short",
+                year: "numeric",
+              })
+            : "-"}
+        </Button>
+      );
+      // 🔴 🔴 🔴 END OF ADDITION
     })()
   )}
 </TableCell>
@@ -1356,208 +1591,172 @@ useEffect(() => {
   </DialogActions>
 </Dialog>
 
-
-
-    {/* Raised Invoices Table */}
-    {view === "invoices" && (
-      <TableContainer component={Paper}>
-        <Table stickyHeader>
-          <TableHead style={{ backgroundColor: "lightgray" }}>
-            <TableRow>
-              <TableCell style={{ fontWeight: "bold" }}>Invoice Number</TableCell>
-              <TableCell style={{ fontWeight: "bold" }}>Client Name</TableCell>
-              {/* <TableCell style={{ fontWeight: "bold" }}>Project ID</TableCell> */}
-              <TableCell style={{ fontWeight: "bold" }}>Invoice Value</TableCell>
-              <TableCell style={{ fontWeight: "bold"}}>GST</TableCell>
-              <TableCell style={{ fontWeight: "bold" }}>Raised On</TableCell>
-              <TableCell style={{ fontWeight: "bold" }}>Start Date</TableCell>
-              <TableCell style={{ fontWeight: "bold" }}>End Date</TableCell>
-              <TableCell style={{ fontWeight: "bold" }}>Due Date</TableCell>
-<TableCell style={{ fontWeight: "bold", whiteSpace: "nowrap" }}>
-  <Box display="flex" alignItems="center" gap={1}>
-    <TextField
-      label="Received"
-      select
-      size="small"
-      value={receivedFilter}
-      onChange={(e) => setReceivedFilter(e.target.value)}
-      variant="outlined"
-      sx={{
-        minWidth: 70,
-        width: 80,
-        "& .MuiInputBase-input": { padding: "4px 8px" },
-      }}
-    >
-      <MenuItem value="All">All</MenuItem>
-      <MenuItem value="Yes">Yes</MenuItem>
-      <MenuItem value="No">No</MenuItem>
-    </TextField>
-  </Box>
-</TableCell>
-
-              {/* <TableCell style={{ fontWeight: "bold" }}>Received Date</TableCell> */}
-              <TableCell style={{ fontWeight: "bold" }}>Action</TableCell>
-            </TableRow>
-          </TableHead>
-         <TableBody>
-  {filteredInvoices
-    .filter((inv) => {
-      if (receivedFilter === "All") return true;
-      return inv.received === receivedFilter;
-    })
-    .length === 0 ? (
-      <TableRow>
-        <TableCell colSpan={9} align="center">
-          No invoices found
-        </TableCell>
-      </TableRow>
-  ) : (
-    filteredInvoices
-      .filter((inv) => {
-        if (receivedFilter === "All") return true;
-        return inv.received === receivedFilter;
-      })
-      .map((inv) => (
-        <TableRow
-          onClick={() => {
-            setSelectedInvoice(inv);
-            setOpenPreview(true);
-          }}
-          key={inv.id}
-          hover
-          style={{ cursor: "pointer" }}
-        >
-<TableCell>
-  <Tooltip title={inv.invoice_number}>
-    <span
-      style={{
-        display: "inline-block",
-        maxWidth: "120px", // adjust width
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        cursor: "pointer",
-      }}
-    >
-      {inv.invoice_number}
-    </span>
-  </Tooltip>
-</TableCell>     
-     <TableCell>{inv.client_name}</TableCell>
-          <TableCell>
-            {new Intl.NumberFormat("en-IN", {
-              style: "currency",
-              currency: "INR",
-              maximumFractionDigits: 0,
-            }).format(inv.invoice_value)}
-          </TableCell>
-                          <TableCell>{new Intl.NumberFormat("en-IN", {
-              style: "currency",
-              currency: "INR",
-              maximumFractionDigits: 0,
-            }).format(inv.gst_amount)}</TableCell>
-          <TableCell style={{ whiteSpace: "nowrap" }}>
-            {inv.invoice_date
-              ? (() => {
-                  const d = new Date(inv.invoice_date);
-                  const day = String(d.getDate()).padStart(2, "0");
-                  const month = String(d.getMonth() + 1).padStart(2, "0");
-                  const year = d.getFullYear();
-                  return `${day}-${month}-${year}`;
-                })()
-              : "-"}
-          </TableCell>
-          <TableCell style={{ whiteSpace: "nowrap" }}>
-            {inv.start_date
-              ? (() => {
-                  const d = new Date(inv.start_date);
-                  const day = String(d.getDate()).padStart(2, "0");
-                  const month = String(d.getMonth() + 1).padStart(2, "0");
-                  const year = d.getFullYear();
-                  return `${day}-${month}-${year}`;
-                })()
-              : "-"}
-          </TableCell>
-          <TableCell style={{ whiteSpace: "nowrap" }}>
-            {inv.end_date
-              ? (() => {
-                  const d = new Date(inv.end_date);
-                  const day = String(d.getDate()).padStart(2, "0");
-                  const month = String(d.getMonth() + 1).padStart(2, "0");
-                  const year = d.getFullYear();
-                  return `${day}-${month}-${year}`;
-                })()
-              : "-"}
-          </TableCell>
-          <TableCell style={{ whiteSpace: "nowrap" }}>
-            {inv.due_date
-              ? (() => {
-                  const d = new Date(inv.due_date);
-                  const day = String(d.getDate()).padStart(2, "0");
-                  const month = String(d.getMonth() + 1).padStart(2, "0");
-                  const year = d.getFullYear();
-                  return `${day}-${month}-${year}`;
-                })()
-              : "-"}
-          </TableCell>
-          <TableCell style={{ textAlign: "center" }}>
-            {inv.received === "Yes" ? (
-              <span
-                style={{
-                  color: "green",
-                  fontWeight: "bold",
-                  animation: "radiateGreen 1.5s infinite",
-                }}
-              >
-                Yes
-              </span>
-            ) : (
-              <span
-                style={{
-                  color: "red",
-                  fontWeight: "bold",
-                  animation: "radiateRed 1.5s infinite",
-                }}
-              >
-                No
-              </span>
-            )}
-          </TableCell>
-          <TableCell>
-            <Box display="flex" gap={1}>
-              <IconButton
-                onClick={(e) => {
-                  e.stopPropagation(); // Prevent row click
-                  setEditingInvoice(inv);
-                  setOpenEditDialog(true);
-                }}
-              >
-                <EditIcon color="primary" />
-              </IconButton>
-              <IconButton
-  onClick={(e) => {
-    e.stopPropagation();
-    if (inv.received === "Yes") {
-      // optional business rule: block deletion of received invoices
-      alert("Cannot delete invoice that has been marked received.");
-      return;
-    }
-    handleDeleteInvoice(inv.id);
-  }}
->
-  <DeleteIcon color="error" />
-</IconButton>
-
-            </Box>
-          </TableCell>
+{/* Raised Invoices Table */}
+{view === "invoices" && (
+  <TableContainer component={Paper} sx={{ maxHeight: 400, overflow: "auto" }}>
+    <Table stickyHeader>
+      <TableHead>
+        <TableRow>
+          {[
+            "Invoice Number",
+            "Client Name",
+            "Project Name",     
+            "Invoice Value",
+            "GST",
+            "Raised On",
+            "Start Date",
+            "End Date",
+            "Due Date",
+            "Received",
+            "Action",
+          ].map((header) => (
+            <TableCell
+              key={header}
+              sx={{
+                position: "sticky",
+                top: 0,
+                zIndex: 10,
+                backgroundColor: "white",
+                fontWeight: "bold",
+              }}
+            >
+              {header}
+            </TableCell>
+          ))}
         </TableRow>
-      ))
-  )}
-</TableBody>
+      </TableHead>
 
-        </Table>
-      </TableContainer>
-    )}
+      <TableBody>
+        {filteredInvoices
+          .filter((inv) => {
+            if (receivedFilter === "All") return true;
+            return inv.received === receivedFilter;
+          })
+          .length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={11} align="center">
+                No invoices found
+              </TableCell>
+            </TableRow>
+          ) : (
+            filteredInvoices
+              .filter((inv) => {
+                if (receivedFilter === "All") return true;
+                return inv.received === receivedFilter;
+              })
+              .map((inv) => (
+                <TableRow
+                  key={inv.id}
+                  hover
+                  style={{ cursor: "pointer" }}
+                  onClick={() => {
+                    setSelectedInvoice(inv);
+                    setOpenPreview(true);
+                  }}
+                >
+                  <TableCell>
+                    <Tooltip title={inv.invoice_number}>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          maxWidth: "120px",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {inv.invoice_number}
+                      </span>
+                    </Tooltip>
+                  </TableCell>
+
+                  <TableCell>{inv.client_name}</TableCell>
+
+                  {/* ✅ PROJECT NAME */}
+                  <TableCell>
+                    {getProjectNameById(inv.project_id)}
+                  </TableCell>
+
+                  <TableCell>
+                    {new Intl.NumberFormat("en-IN", {
+                      style: "currency",
+                      currency: "INR",
+                      maximumFractionDigits: 0,
+                    }).format(inv.invoice_value)}
+                  </TableCell>
+
+                  <TableCell>
+                    {new Intl.NumberFormat("en-IN", {
+                      style: "currency",
+                      currency: "INR",
+                      maximumFractionDigits: 0,
+                    }).format(inv.gst_amount)}
+                  </TableCell>
+
+                  <TableCell>
+                    {inv.invoice_date
+                      ? new Date(inv.invoice_date).toLocaleDateString("en-GB")
+                      : "-"}
+                  </TableCell>
+
+                  <TableCell>
+                    {inv.start_date
+                      ? new Date(inv.start_date).toLocaleDateString("en-GB")
+                      : "-"}
+                  </TableCell>
+
+                  <TableCell>
+                    {inv.end_date
+                      ? new Date(inv.end_date).toLocaleDateString("en-GB")
+                      : "-"}
+                  </TableCell>
+
+                  <TableCell>
+                    {inv.due_date
+                      ? new Date(inv.due_date).toLocaleDateString("en-GB")
+                      : "-"}
+                  </TableCell>
+
+                  <TableCell align="center">
+                    {inv.received === "Yes" ? (
+                      <span style={{ color: "green", fontWeight: "bold" }}>Yes</span>
+                    ) : (
+                      <span style={{ color: "red", fontWeight: "bold" }}>No</span>
+                    )}
+                  </TableCell>
+
+                  <TableCell>
+                    <Box display="flex" gap={1}>
+                      <IconButton
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingInvoice(inv);
+                          setOpenEditDialog(true);
+                        }}
+                      >
+                        <EditIcon color="primary" />
+                      </IconButton>
+                      <IconButton
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (inv.received === "Yes") {
+                            alert("Cannot delete invoice that has been marked received.");
+                            return;
+                          }
+                          handleDeleteInvoice(inv.id);
+                        }}
+                      >
+                        <DeleteIcon color="error" />
+                      </IconButton>
+                    </Box>
+                  </TableCell>
+                </TableRow>
+              ))
+          )}
+      </TableBody>
+    </Table>
+  </TableContainer>
+)}
 
 {/* Edit Invoice  */}
 <Dialog open={openEditDialog} onClose={() => setOpenEditDialog(false)} maxWidth="sm" fullWidth>
@@ -1718,192 +1917,165 @@ useEffect(() => {
     </Button>
   </DialogActions>
 </Dialog>
-
-
-
 {/* Received Invoices Table */}
 {view === "receivedInvoices" && (
-  <TableContainer component={Paper}>
+  <TableContainer component={Paper} sx={{ maxHeight: 400, overflow: "auto" }}>
     <Table stickyHeader>
-      <TableHead style={{ backgroundColor: "lightgray" }}>
+      <TableHead>
         <TableRow>
-          <TableCell style={{ fontWeight: "bold" }}>Invoice Number</TableCell>
-          <TableCell style={{ fontWeight: "bold" }}>Client Name</TableCell>
-          <TableCell style={{ fontWeight: "bold" }}>Invoice Value</TableCell>
-          <TableCell style={{ fontWeight: "bold"}}>GST</TableCell>
-          <TableCell style={{ fontWeight: "bold" }}>Raised On</TableCell>
-          <TableCell style={{ fontWeight: "bold" }}>Start Date</TableCell>
-          <TableCell style={{ fontWeight: "bold" }}>End Date</TableCell>
-          <TableCell style={{ fontWeight: "bold" }}>Due Date</TableCell>
-          <TableCell style={{ fontWeight: "bold" }}>
-<Box display="flex" alignItems="center" gap={1}>
-  <TextField
-    label="Received"
-    select
-    size="small"
-    value={receivedFilter}
-    onChange={(e) => setReceivedFilter(e.target.value)}
-    variant="outlined"
-    sx={{
-      minWidth: 70,
-      width: 80,
-      "& .MuiInputBase-input": { padding: "4px 8px" },
-    }}
-  >
-    <MenuItem value="All">All</MenuItem>
-    <MenuItem value="Yes">Yes</MenuItem>
-    <MenuItem value="No">No</MenuItem>
-  </TextField>
-</Box>
-          </TableCell>
-
-          <TableCell style={{ fontWeight: "bold" }}>Received Date</TableCell>
+          {[
+            "Invoice Number",
+            "Client Name",
+            "Project Name",      // ✅ ADDED
+            "Invoice Value",
+            "GST",
+            "Raised On",
+            "Start Date",
+            "End Date",
+            "Due Date",
+            "Received",
+            "Received Date",
+          ].map((header) => (
+            <TableCell
+              key={header}
+              sx={{
+                position: "sticky",
+                top: 0,
+                zIndex: 10,
+                backgroundColor: "white",
+                fontWeight: "bold",
+              }}
+            >
+              {header}
+            </TableCell>
+          ))}
         </TableRow>
       </TableHead>
-     <TableBody>
-  {filteredReceivedInvoices.length === 0 ? (
-    <TableRow>
-      <TableCell colSpan={9} align="center">
-        No received invoices found
-      </TableCell>
-    </TableRow>
-  ) : (
-    filteredReceivedInvoices.map((inv) => (
-      <TableRow
-        key={inv.id}
-        hover
-        style={{ cursor: "pointer" }}
-        onClick={() => {
-          setSelectedInvoice(inv);
-          setOpenPreview(true);
-        }}
-      >
-<TableCell>
-  <Tooltip title={inv.invoice_number}>
-    <span
-      style={{
-        display: "inline-block",
-        maxWidth: "120px", // adjust width
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        cursor: "pointer",
-      }}
-    >
-      {inv.invoice_number}
-    </span>
-  </Tooltip>
-</TableCell>
-        <TableCell>{inv.client_name}</TableCell>
-        <TableCell>
-          {new Intl.NumberFormat("en-IN", {
-            style: "currency",
-            currency: "INR",
-            maximumFractionDigits: 0,
-          }).format(inv.invoice_value)}
-        </TableCell>
-         <TableCell>
-          {new Intl.NumberFormat("en-IN", {
-            style: "currency",
-            currency: "INR",
-            maximumFractionDigits: 0,
-          }).format(inv.gst_amount)}
-        </TableCell>
-        <TableCell style={{ whiteSpace: "nowrap" }}>
-          {inv.invoice_date
-            ? (() => {
-                const d = new Date(inv.invoice_date);
-                return `${String(d.getDate()).padStart(2, "0")}-${String(
-                  d.getMonth() + 1
-                ).padStart(2, "0")}-${d.getFullYear()}`;
-              })()
-            : "-"}
-        </TableCell>
-        <TableCell  style={{ whiteSpace: "nowrap" }}>
-          {inv.start_date
-            ? (() => {
-                const d = new Date(inv.start_date);
-                return `${String(d.getDate()).padStart(2, "0")}-${String(
-                  d.getMonth() + 1
-                ).padStart(2, "0")}-${d.getFullYear()}`;
-              })()
-            : "-"}
-        </TableCell>
-        <TableCell style={{ whiteSpace: "nowrap" }}>
-          {inv.end_date
-            ? (() => {
-                const d = new Date(inv.end_date);
-                return `${String(d.getDate()).padStart(2, "0")}-${String(
-                  d.getMonth() + 1
-                ).padStart(2, "0")}-${d.getFullYear()}`;
-              })()
-            : "-"}
-        </TableCell>
-        <TableCell style={{ whiteSpace: "nowrap" }}>
-          {inv.due_date
-            ? (() => {
-                const d = new Date(inv.due_date);
-                return `${String(d.getDate()).padStart(2, "0")}-${String(
-                  d.getMonth() + 1
-                ).padStart(2, "0")}-${d.getFullYear()}`;
-              })()
-            : "-"}
-        </TableCell>
-        <TableCell
-  style={{ textAlign: "center", cursor: "pointer" }}
-  onClick={(e) => {
-    e.stopPropagation(); // prevent row click
-    setEditingReceivedInvoice({
-      id: inv.id,
-      received: inv.received,
-      received_date: inv.received_date || "",
-    });
-    setReceivedModalOpen(true);
-  }}
->
-  {inv.received === "Yes" ? (
-    <span
-      style={{
-        color: "green",
-        fontWeight: "bold",
-        animation: "radiateGreen 1.5s infinite",
-      }}
-    >
-      Yes
-    </span>
-  ) : (
-    <span
-      style={{
-        color: "red",
-        fontWeight: "bold",
-        animation: "radiateRed 1.5s infinite",
-      }}
-    >
-      No
-    </span>
-  )}
-</TableCell>
 
-        <TableCell>
-          {inv.received_date
-            ? (() => {
-                const d = new Date(inv.received_date);
-                return `${String(d.getDate()).padStart(2, "0")}-${String(
-                  d.getMonth() + 1
-                ).padStart(2, "0")}-${d.getFullYear()}`;
-              })()
-            : "-"}
-        </TableCell>
-      </TableRow>
-    ))
-  )}
-</TableBody>
+      <TableBody>
+        {filteredReceivedInvoices.length === 0 ? (
+          <TableRow>
+            <TableCell colSpan={11} align="center">
+              No received invoices found
+            </TableCell>
+          </TableRow>
+        ) : (
+          filteredReceivedInvoices.map((inv) => (
+            <TableRow
+              key={inv.id}
+              hover
+              style={{ cursor: "pointer" }}
+              onClick={() => {
+                setSelectedInvoice(inv);
+                setOpenPreview(true);
+              }}
+            >
+              {/* Invoice Number */}
+              <TableCell>
+                <Tooltip title={inv.invoice_number}>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      maxWidth: "120px",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {inv.invoice_number}
+                  </span>
+                </Tooltip>
+              </TableCell>
 
+              {/* Client Name */}
+              <TableCell>{inv.client_name}</TableCell>
+
+              {/* ✅ Project Name */}
+              <TableCell>
+                {getProjectNameById(inv.project_id)}
+              </TableCell>
+
+              {/* Invoice Value */}
+              <TableCell>
+                {new Intl.NumberFormat("en-IN", {
+                  style: "currency",
+                  currency: "INR",
+                  maximumFractionDigits: 0,
+                }).format(inv.invoice_value)}
+              </TableCell>
+
+              {/* GST */}
+              <TableCell>
+                {new Intl.NumberFormat("en-IN", {
+                  style: "currency",
+                  currency: "INR",
+                  maximumFractionDigits: 0,
+                }).format(inv.gst_amount)}
+              </TableCell>
+
+              {/* Raised On */}
+              <TableCell style={{ whiteSpace: "nowrap" }}>
+                {inv.invoice_date
+                  ? new Date(inv.invoice_date).toLocaleDateString("en-GB")
+                  : "-"}
+              </TableCell>
+
+              {/* Start Date */}
+              <TableCell style={{ whiteSpace: "nowrap" }}>
+                {inv.start_date
+                  ? new Date(inv.start_date).toLocaleDateString("en-GB")
+                  : "-"}
+              </TableCell>
+
+              {/* End Date */}
+              <TableCell style={{ whiteSpace: "nowrap" }}>
+                {inv.end_date
+                  ? new Date(inv.end_date).toLocaleDateString("en-GB")
+                  : "-"}
+              </TableCell>
+
+              {/* Due Date */}
+              <TableCell style={{ whiteSpace: "nowrap" }}>
+                {inv.due_date
+                  ? new Date(inv.due_date).toLocaleDateString("en-GB")
+                  : "-"}
+              </TableCell>
+
+              {/* Received */}
+              <TableCell
+                style={{ textAlign: "center", cursor: "pointer" }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingReceivedInvoice({
+                    id: inv.id,
+                    received: inv.received,
+                    received_date: inv.received_date || "",
+                  });
+                  setReceivedModalOpen(true);
+                }}
+              >
+                {inv.received === "Yes" ? (
+                  <span style={{ color: "green", fontWeight: "bold" }}>Yes</span>
+                ) : (
+                  <span style={{ color: "red", fontWeight: "bold" }}>No</span>
+                )}
+              </TableCell>
+
+              {/* Received Date */}
+              <TableCell style={{ whiteSpace: "nowrap" }}>
+                {inv.received_date
+                  ? new Date(inv.received_date).toLocaleDateString("en-GB")
+                  : "-"}
+              </TableCell>
+            </TableRow>
+          ))
+        )}
+      </TableBody>
     </Table>
   </TableContainer>
 )}
 
-  </div>
+</div>
 
 {/* Update Received Status Modal */}
  <Dialog
@@ -1963,8 +2135,6 @@ useEffect(() => {
     </Button>
   </DialogActions>
 </Dialog>
-
-
 </div>
 
       {/* Add Invoice Button */}
@@ -2032,15 +2202,10 @@ useEffect(() => {
     }));
   }}
   InputLabelProps={{ shrink: true }}
-/>
-
-
-    
-
-    </div>
+/> </div>
 
     {/* Row 2: Invoice Date + Project */}
-    <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+ <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
   
  {isRaised ? (
   <TextField
@@ -2096,7 +2261,11 @@ useEffect(() => {
             const now = new Date();
             const month = String(now.getMonth() + 1).padStart(2, "0");
             const year = now.getFullYear();
-            const invoiceNumber = `${selectedClientName}|${newInvoice.project_id}-${month}${year}`;
+           const invoiceNumber = generateInvoiceNumber(
+  selectedClientName,
+  new Date()
+);
+
             setNewInvoice({
               ...newInvoice,
               client_name: selectedClientName,
@@ -2108,6 +2277,7 @@ useEffect(() => {
         }
       }
     }}
+    
   >
     {clients.map((c) => (
       <MenuItem key={c.id} value={c.clientName}>
@@ -2176,7 +2346,15 @@ useEffect(() => {
       // 🔹 Fetch project details
       const res = await fetch(`http://localhost:7760/getProject/${projectID}`);
       if (!res.ok) throw new Error("Failed to fetch project");
+ 
       const projectData = await res.json();
+    
+      // ✅ SAFELY PARSE MILESTONES
+projectData.milestones = Array.isArray(projectData.milestones)
+  ? projectData.milestones
+  : projectData.milestones
+  ? JSON.parse(projectData.milestones)
+  : [];
 
       // 🔹 Store selected project
       setSelectedProject(projectData);
@@ -2217,11 +2395,7 @@ useEffect(() => {
 </TextField>
 
 )}
-
-
-
-    </div>
-
+ </div>
     {/* Row 3: Start Date + End Date */}
    <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
   <TextField
@@ -2241,7 +2415,6 @@ useEffect(() => {
     },
   }}
 />
-
 <TextField
   type="date"
   fullWidth
@@ -2259,9 +2432,7 @@ useEffect(() => {
     },
   }}
 />
- 
-
-</div>
+ </div>
 
 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
   <div style={{ display: "flex", gap: 10 }}>
@@ -2272,7 +2443,11 @@ useEffect(() => {
   label={selectedProject?.billingType === "Hour" ? "Billable Hours" : "Billable Days"}
   value={newInvoice.billable_days || ""}
   onChange={handleBillableChange}
-  disabled={selectedProject?.billingType === "Month"}
+  disabled={
+  selectedProject?.billingType === "Month" ||
+  selectedProject?.isFixed === "Yes"
+}
+
   error={!!billableError}
   helperText={
     selectedProject?.billingType === "Month"
@@ -2302,9 +2477,7 @@ useEffect(() => {
     },
   }}
 />
-
-
-    {/* Non-Billable Days / Hours */}
+ {/* Non-Billable Days / Hours */}
     <TextField
       fullWidth
       type="number"
@@ -2320,9 +2493,7 @@ useEffect(() => {
         },
       }}
     />
-  
-
-  </div>
+   </div>
 </div>
  <div
   style={{
@@ -2356,9 +2527,6 @@ useEffect(() => {
     {newInvoice.invoice_cycle || "—"}
   </div>
 </div>
-
-
-
     {/* Conditional Row: Received Date */}
     {newInvoice.received === "Yes" && (
       <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
@@ -2392,7 +2560,6 @@ useEffect(() => {
     padding: "1rem 1.5rem",
   }}
 >
-  
   <Table
     size="small"
     style={{
@@ -2414,41 +2581,6 @@ useEffect(() => {
           Base Value (Before Tax)
         </TableCell>
         <TableCell>
-          {/* <TextField
-            variant="outlined"
-            type="number"
-            size="small"
-            value={newInvoice.base_value ?? calculatedValues.base_value ?? 0}
-            onChange={(e) => {
-              const base = Number(e.target.value) || 0;
-              const gst = newInvoice.gst_amount ?? calculatedValues.gst_amount ?? 0;
-              const tds = newInvoice.tds_amount ?? calculatedValues.tds_amount ?? 0;
-              const total = base + gst - tds;
-
-              setNewInvoice((prev) => ({
-                ...prev,
-                base_value: base,
-                invoice_value: total,
-              }));
-              setCalculatedValues((prev) => ({
-                ...prev,
-                base_value: base,
-                invoice_value: total,
-              }));
-            }}
-            InputProps={{
-              startAdornment: (
-                <span style={{ marginRight: "5px", color: "#6b7280" }}>₹</span>
-              ),
-            }}
-            sx={{
-              "& .MuiOutlinedInput-root": {
-                height: 35,
-                fontSize: "0.9rem",
-              },
-            }}
-          /> */}
-
           <TextField
   variant="outlined"
   type="number"
@@ -2503,7 +2635,6 @@ useEffect(() => {
     },
   }}
 />
-
         </TableCell>
       </TableRow>
 
@@ -2627,10 +2758,6 @@ useEffect(() => {
   </Table>
 </div>
 
-
-
-
-
   <DialogActions>
     <Button onClick={() => {setOpenDialog(false);resetForm();setIsRaised(false);setCalculatedValues("")}}>Cancel</Button>
     <Button variant="outlined" color="success" onClick={()=>{handleAddInvoice()}}>
@@ -2638,9 +2765,7 @@ useEffect(() => {
     </Button>
   </DialogActions>
 </Dialog>
-
-
-     {/* Preview of Invoice */}
+ {/* Preview of Invoice */}
      <Dialog
   open={openPreview}
 
@@ -2665,76 +2790,59 @@ onClose={() => {
     }}
   >
     {/* Pick invoice object dynamically */}
-    {(() => {
-      const invoice = selectedInvoice || newInvoice; // use whichever is set
+  {(() => {
+  const invoice = selectedInvoice || newInvoice; // use whichever is set
 
-      return (
-        <>
-          {/* Header */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              marginBottom: 20,
-            }}
-          >
-            <img
-              src="./Images/logo.avif"
-              alt="Company Logo"
-              style={{ height: 50, width: 195 }}
-            />
-            <div style={{ textAlign: "right" }}>
-              <h2 style={{ margin: 0 }}>Ornnova Technologies India Pvt Ltd</h2>
-              <p style={{ margin: 0 }}>
-                #66, 2nd Floor, 1st Main Road, ST Bed Layout, Koramangala,
-                Bangalore-560034
-              </p>
-              <p style={{ margin: 0 }}>GSTIN/UIN: 29AACCO2254P1ZZ</p>
-              <p style={{ margin: 0 }}>CIN: U72900KA2015PTC083796</p>
-              <p style={{ margin: 0 }}>State Name: Karnataka, Code: 29</p>
-              <p style={{ margin: 0 }}>E-Mail: accounts@ornnova.com</p>
-            </div>
-          </div>
+  // Try several places for the project name (handles both raised-from-project and saved invoices)
+  const projectIdStr = invoice.project_id || invoice.projectID || "";
+  const projectName =
+    invoice.projectName ||
+    invoice.project_name ||
+    invoice.project?.projectName ||
+    (activeProjects && activeProjects.find(p => String(p.projectID) === String(projectIdStr))?.projectName) ||
+    (projects && projects.find(p => String(p.projectID) === String(projectIdStr))?.projectName) ||
+    selectedProject?.projectName ||
+    "";
 
-          {/* Details */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              marginBottom: 20,
-            }}
-          >
-            <div>
-              <p>
-                <strong>Invoice Number:</strong> {invoice.invoice_number}
-              </p>
-              <p>
-                <strong>Invoice Date:</strong> {invoice.invoice_date}
-              </p>
-              <p>
-                <strong>Client Name:</strong> {invoice.client_name}
-              </p>
-              <p>
-                <strong>Project ID:</strong> {invoice.project_id}
-              </p>
-            </div>
-            <div>
-              <p>
-                <strong>Start Date:</strong> {invoice.start_date}
-              </p>
-              <p>
-                <strong>End Date:</strong> {invoice.end_date}
-              </p>
-              <p>
-                <strong>Invoice Cycle:</strong> {invoice.invoice_cycle}
-              </p>
-              <p>
+  return (
+    <>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
+        <img src="./Images/logo.avif" alt="Company Logo" style={{ height: 50, width: 195 }} />
+        <div style={{ textAlign: "right" }}>
+          <h2 style={{ margin: 0 }}>Ornnova Technologies India Pvt Ltd</h2>
+          <p style={{ margin: 0 }}>#66, 2nd Floor, 1st Main Road, ST Bed Layout, Koramangala, Bangalore-560034</p>
+          <p style={{ margin: 0 }}>GSTIN/UIN: 29AACCO2254P1ZZ</p>
+          <p style={{ margin: 0 }}>CIN: U72900KA2015PTC083796</p>
+          <p style={{ margin: 0 }}>State Name: Karnataka, Code: 29</p>
+          <p style={{ margin: 0 }}>E-Mail: accounts@ornnova.com</p>
+        </div>
+      </div>
 
+      {/* Details */}
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
+        <div>
+          <p><strong>Invoice Number:</strong> {invoice.invoice_number}</p>
+          <p><strong>Invoice Date:</strong> {invoice.invoice_date}</p>
+          <p><strong>Client Name:</strong> {invoice.client_name}</p>
+          <p>
+            <strong>Project ID:</strong> {projectIdStr || "-"}</p>
+            {projectName ? (
+              <>
+                
+                <strong>Project Name:</strong> {projectName}
+              </>
+            ) : null}
+         
+        </div>
 
-<strong>Due Date:</strong> {formatDate(invoice.due_date)}
-              </p>
-            </div>
-          </div>
+        <div>
+          <p><strong>Start Date:</strong> {invoice.start_date}</p>
+          <p><strong>End Date:</strong> {invoice.end_date}</p>
+          <p><strong>Invoice Cycle:</strong> {invoice.invoice_cycle}</p>
+          <p><strong>Due Date:</strong> {formatDate(invoice.due_date)}</p>
+        </div>
+      </div>
 
           {/* Amounts Table */}
           <table
@@ -2851,17 +2959,7 @@ onClose={() => {
     <Button onClick={handleDownloadPDF} color="secondary" variant="outlined">
       Download PDF
     </Button>
-     {/* {!selectedInvoice && (
-    <Button
-      onClick={handleAddInvoice} // your save function
-      color="primary"
-      variant="contained"
-    >
-      Save
-    </Button>
-  )} */}
-
-  </DialogActions>
+   </DialogActions>
 </Dialog>
 
     </div>

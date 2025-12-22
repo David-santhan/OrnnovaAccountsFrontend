@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import {
   Box,
@@ -85,6 +84,7 @@ function Home() {
   const [searchInput, setSearchInput] = useState(""); // what user types
   const [searchTerm, setSearchTerm] = useState(""); // applied search term
   const [clients, setClients] = useState([]);
+  const [clientsLoaded, setClientsLoaded] = useState(false); // true if Load or Search ran
   const [adding, setAdding] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
   const [isClientEditing, setIsClientEditing] = useState(false);
@@ -92,21 +92,124 @@ function Home() {
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [clientToDelete, setClientToDelete] = useState(null);
 
-  const filteredClients = clients.filter((client) =>
-    client.clientName?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   const [newClient, setNewClient] = useState({});
+
+  // Reset clients/search when user navigates away from Clients page
+  useEffect(() => {
+    if (selected !== "Clients") {
+      // clear previous search & clients so returning to Clients shows empty until Load or Search
+      setSearchInput("");
+      setSearchTerm("");
+      setClients([]);
+      setClientsLoaded(false);
+      setSelectedClient(null);
+      setIsClientEditing(false);
+    }
+  }, [selected]);
+
+  // centralized loader so both Load and Search use same fresh data
+  const loadClients = async () => {
+    try {
+      const response = await axios.get("http://localhost:7760/getclients");
+      // ensure array
+      const data = Array.isArray(response.data) ? response.data : [];
+      setClients(data);
+      setClientsLoaded(true);
+      return data;
+    } catch (err) {
+      console.error("Failed to load clients:", err);
+      setClients([]);
+      setClientsLoaded(false);
+      return [];
+    }
+  };
+
+  // filteredClients uses applied searchTerm; if searchTerm empty and clientsLoaded true -> show all
+  const filteredClients = clients.filter((client) =>
+    (searchTerm || "").trim() === ""
+      ? true // show all when no applied search
+      : (client.clientName || "").toLowerCase().includes((searchTerm || "").toLowerCase())
+  );
 
   const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
 
+  const handleAddClient = async () => {
+    if (adding) return; // prevent double click
+    setAdding(true);
+    try {
+      const response = await axios.post("http://localhost:7760/addclients", newClient);
+      // If backend returned an id (expected), add to list
+      const added = { ...newClient, id: response?.data?.id ?? Math.random().toString(36).slice(2, 9) };
+      setClients((prev) => [...prev, added]);
+      setNewClient({
+        clientName: "",
+        aboutClient: "",
+        paymentTerms: "",
+        location: "",
+        contactSpoc: "",
+        contactEmail: "",
+        contactNumber: "",
+        gstApplicable: "",
+        gstNumber: "",
+        gstPercentage: "",
+      });
+      setAddClientOpen(false);
+      alert("Client added successfully!");
+    } catch (err) {
+      console.error(err.response ? err.response.data : err);
+      alert("Something went wrong!");
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await axios.delete(`http://localhost:7760/deleteclient/${clientToDelete.id}`);
+      setOpenDeleteDialog(false);
+      setClientToDelete(null);
+      // refresh client list after deletion
+      await loadClients();
+      alert("Client deleted successfully");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to delete client");
+    }
+  };
+
+  const handleRowClick = (client) => {
+    setSelectedClient(client);
+    setClientFormValues(client); // copy client data to form state
+    setIsClientEditing(false); // start in preview mode
+  };
+
+  const handleClientChange = (field, value) => {
+    setClientFormValues({ ...clientFormValues, [field]: value });
+  };
+
+  const handleClientSave = async () => {
+    try {
+      const res = await axios.put(`http://localhost:7760/update-client/${clientFormValues.id}`, clientFormValues);
+      if (res.data.success) {
+        // Refresh clients
+        await loadClients();
+        setSelectedClient(null);
+        alert("✅ Client updated successfully!");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update client!");
+    }
+  };
+
+  const handleClientCancel = () => {
+    setClientFormValues(selectedClient); // revert changes
+    setIsClientEditing(false);
+  };
+
   const drawer = (
     <Box sx={{ width: 220 }}>
-      <Typography
-        variant="h6"
-        align="center"
-        sx={{ py: 2, borderBottom: "1px solid #ddd", fontWeight: "bold" }}
-      >
+      <Typography variant="h6" align="center" sx={{ py: 2, borderBottom: "1px solid #ddd", fontWeight: "bold" }}>
         Dashboard
       </Typography>
       <List>
@@ -127,97 +230,8 @@ function Home() {
     </Box>
   );
 
-  // Clients Table UI
+  // The Clients UI (kept as a function to keep your original structure)
   const renderClients = () => {
-    const handleAddClient = async () => {
-      if (adding) return; // prevent double click
-      setAdding(true);
-      try {
-        const response = await axios.post(
-          "http://localhost:7760/addclients",
-          newClient
-        );
-        setClients([...clients, { ...newClient, id: response.data.id }]);
-        setNewClient({
-          clientName: "",
-          aboutClient: "",
-          paymentTerms: "",
-          location: "",
-          contactSpoc: "",
-          contactEmail: "",
-          contactNumber: "",
-          gstApplicable: "",
-          gstNumber: "",
-          gstPercentage: "",
-        });
-        setAddClientOpen(false);
-        alert("Client added successfully!");
-      } catch (err) {
-        console.error(err.response ? err.response.data : err);
-        alert("Something went wrong!");
-      } finally {
-        setAdding(false);
-      }
-    };
-
-    const loadClients = async () => {
-      try {
-        const response = await axios.get("http://localhost:7760/getclients");
-        setClients(response.data);
-      } catch (error) {
-        console.log(error);
-      }
-    };
-
-    const handleDelete = async () => {
-      try {
-        await axios.delete(
-          `http://localhost:7760/deleteclient/${clientToDelete.id}`
-        );
-        setOpenDeleteDialog(false);
-        setClientToDelete(null);
-        loadClients(); // refresh client list
-        alert("Client deleted successfully"); // show alert on UI
-      } catch (err) {
-        console.error(err);
-        alert("Failed to delete client");
-      }
-    };
-
-    const handleRowClick = (client) => {
-      setSelectedClient(client);
-      setClientFormValues(client); // copy client data to form state
-      setIsClientEditing(false); // start in preview mode
-    };
-
-    const handleClientChange = (field, value) => {
-      setClientFormValues({ ...clientFormValues, [field]: value });
-    };
-
-    const handleClientSave = async () => {
-      try {
-        const res = await axios.put(
-          `http://localhost:7760/update-client/${clientFormValues.id}`,
-          clientFormValues
-        );
-        if (res.data.success) {
-          // Refresh clients
-          const refreshed = await axios.get("http://localhost:7760/getclients");
-          setClients(refreshed.data);
-          setSelectedClient(null);
-          alert("✅ Client updated successfully!");
-        }
-      } catch (err) {
-        console.error(err);
-        alert("Failed to update client!");
-      }
-    };
-
-    const handleClientCancel = () => {
-      setClientFormValues(selectedClient); // revert changes
-      setIsClientEditing(false);
-    };
-
     return (
       <Box sx={{ width: "100%" }}>
         <Box
@@ -248,74 +262,70 @@ function Home() {
               gap: 2,
             }}
           >
-            <Divider
-              variant="h2"
-              sx={{ fontWeight: "bold", color: "darkblue" }}
-            >
+            <Divider variant="h2" sx={{ fontWeight: "bold", color: "darkblue" }}>
               Clients
             </Divider>
 
             {/* Search Bar */}
-           <Box
-  sx={{
-    width: "50%",
-    margin: "auto",
-    display: "flex",
-    gap: 1,
-    justifyContent: "center",
-    alignItems: "center", // important to align vertically
-  }}
->
-  <TextField
-    label="Search by Client Name"
-    variant="outlined"
-    fullWidth
-    value={searchInput}
-    onChange={(e) => setSearchInput(e.target.value)}
-  />
+            <Box
+              sx={{
+                width: "50%",
+                margin: "auto",
+                display: "flex",
+                gap: 1,
+                justifyContent: "center",
+                alignItems: "center", // important to align vertically
+              }}
+            >
+              <TextField
+                label="Search by Client Name"
+                variant="outlined"
+                fullWidth
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+              />
 
-  <Button
-    variant="contained"
-    color={searchInput ? "success" : "primary"}
-    onClick={async () => {
-      if (searchInput) {
-        setSearchTerm(searchInput);
-      } else {
-        await loadClients();
-        setSearchTerm("");
-        setSearchInput("");
-      }
-    }}
-    sx={{
-      borderRadius: searchInput ? "50%" : 1,
-      minWidth: 0,
-      width: searchInput ? 52 : "auto",
-      height: searchInput ? 47 : "auto",
-      px: searchInput ? 0 : 4,
-      py: searchInput ? 0 : 1,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontWeight: searchInput ? "normal" : "bold",
-      backgroundColor: searchInput ? undefined : "rgba(106, 106, 232, 1)",
-    }}
-  >
-    {searchInput ? <SearchIcon /> : "Load"}
-  </Button>
+              <Button
+                variant="contained"
+                color={searchInput ? "success" : "primary"}
+                onClick={async () => {
+                  // Always fetch latest clients first
+                  await loadClients();
 
-  {/* Smaller Total Clients text */}
-  <Typography
-    variant="body2"        // smaller text
-    sx={{ fontWeight: "bold", ml: 1, whiteSpace: "nowrap" }}
-  >
-    Total Number of Clients: {clients.length}
-  </Typography>
-</Box>
+                  if (searchInput && searchInput.trim() !== "") {
+                    // apply search term so filteredClients displays
+                    setSearchTerm(searchInput.trim());
+                  } else {
+                    // no search -> show all
+                    setSearchTerm("");
+                  }
+                }}
+                sx={{
+                  borderRadius: searchInput ? "50%" : 1,
+                  minWidth: 0,
+                  width: searchInput ? 52 : "auto",
+                  height: searchInput ? 47 : "auto",
+                  px: searchInput ? 0 : 4,
+                  py: searchInput ? 0 : 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: searchInput ? "normal" : "bold",
+                  backgroundColor: searchInput ? undefined : "rgba(106, 106, 232, 1)",
+                }}
+              >
+                {searchInput ? <SearchIcon /> : "Load"}
+              </Button>
 
+              {/* Smaller Total Clients text */}
+              <Typography variant="body2" sx={{ fontWeight: "bold", ml: 1, whiteSpace: "nowrap" }}>
+                Total Number of Clients: {clients.length}
+              </Typography>
+            </Box>
           </Box>
 
           {/* Table: Scrollable Body */}
-          {clients.length > 0 && (
+          {clientsLoaded && clients.length > 0 && (
             <TableContainer
               component={Paper}
               sx={{
@@ -327,24 +337,17 @@ function Home() {
               <Table stickyHeader>
                 <TableHead>
                   <TableRow sx={{ backgroundColor: "whitesmoke" }}>
-                    {["ID", "Name", "SPOC", "Email", "Number", "Action"].map(
-                      (header) => (
-                        <TableCell key={header} sx={{ fontWeight: "bold" }}>
-                          {header}
-                        </TableCell>
-                      )
-                    )}
+                    {["ID", "Name", "SPOC", "Email", "Number", "Action"].map((header) => (
+                      <TableCell key={header} sx={{ fontWeight: "bold" }}>
+                        {header}
+                      </TableCell>
+                    ))}
                   </TableRow>
                 </TableHead>
 
                 <TableBody>
                   {filteredClients.map((client) => (
-                    <TableRow
-                      key={client.id}
-                      hover
-                      onClick={() => handleRowClick(client)}
-                      sx={{ cursor: "pointer" }}
-                    >
+                    <TableRow key={client.id} hover onClick={() => handleRowClick(client)} sx={{ cursor: "pointer" }}>
                       <TableCell>{client.id}</TableCell>
                       <TableCell>{client.clientName}</TableCell>
                       <TableCell>{client.contactSpoc}</TableCell>
@@ -364,6 +367,15 @@ function Home() {
                       </TableCell>
                     </TableRow>
                   ))}
+
+                  {/* No results row if search applied and nothing matched */}
+                  {clientsLoaded && searchTerm.trim() !== "" && filteredClients.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} align="center">
+                        No clients found for "{searchTerm}"
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </TableContainer>
@@ -371,30 +383,12 @@ function Home() {
         </Box>
 
         {/* Delete Confirmation Dialog */}
-        <Dialog
-          open={openDeleteDialog}
-          onClose={() => setOpenDeleteDialog(false)}
-        >
-          <DialogTitle
-            style={{
-              fontWeight: "bold",
-              textAlign: "center",
-              fontFamily: "monospace",
-            }}
-          >
-            Delete Client
-          </DialogTitle>{" "}
+        <Dialog open={openDeleteDialog} onClose={() => setOpenDeleteDialog(false)}>
+          <DialogTitle style={{ fontWeight: "bold", textAlign: "center", fontFamily: "monospace" }}>Delete Client</DialogTitle>
           <Divider />
           <DialogContent>
-            <DialogContentText
-              style={{
-                textAlign: "center",
-                fontFamily: "monospace",
-                color: "black",
-              }}
-            >
-              Are you sure you want to delete{" "}
-              <strong>{clientToDelete?.clientName}</strong>?
+            <DialogContentText style={{ textAlign: "center", fontFamily: "monospace", color: "black" }}>
+              Are you sure you want to delete <strong>{clientToDelete?.clientName}</strong>?
             </DialogContentText>
           </DialogContent>
           <DialogActions>
@@ -406,12 +400,7 @@ function Home() {
         </Dialog>
 
         {/* Preview Client */}
-        <Dialog
-          open={!!selectedClient}
-          onClose={() => setSelectedClient(null)}
-          fullWidth
-          maxWidth="md"
-        >
+        <Dialog open={!!selectedClient} onClose={() => setSelectedClient(null)} fullWidth maxWidth="md">
           <DialogTitle>Client Preview</DialogTitle>
 
           <DialogContent dividers>
@@ -419,103 +408,35 @@ function Home() {
               <Stack spacing={2}>
                 {/* Row 1 */}
                 <Stack direction="row" spacing={2}>
-                  <TextField
-                    label="Client Name"
-                    value={clientFormValues.clientName}
-                    onChange={(e) =>
-                      handleClientChange("clientName", e.target.value)
-                    }
-                    fullWidth
-                    InputProps={{ readOnly: !isClientEditing }}
-                  />
-                  <TextField
-                    label="About Client"
-                    value={clientFormValues.aboutClient}
-                    multiline
-                    minRows={2}
-                    onChange={(e) => handleClientChange("aboutClient", e.target.value)}
-                    fullWidth
-                    InputProps={{ readOnly: !isClientEditing }}
-                  />
+                  <TextField label="Client Name" value={clientFormValues.clientName} onChange={(e) => handleClientChange("clientName", e.target.value)} fullWidth InputProps={{ readOnly: !isClientEditing }} />
+                  <TextField label="About Client" value={clientFormValues.aboutClient} multiline minRows={2} onChange={(e) => handleClientChange("aboutClient", e.target.value)} fullWidth InputProps={{ readOnly: !isClientEditing }} />
                 </Stack>
 
                 {/* Row 2 */}
                 <Stack direction="row" spacing={2}>
-                  <TextField
-                    label="Location"
-                    value={clientFormValues.location}
-                    onChange={(e) => handleClientChange("location", e.target.value)}
-                    fullWidth
-                    InputProps={{ readOnly: !isClientEditing }}
-                  />
-                  <TextField
-                    label="Contact SPOC"
-                    value={clientFormValues.contactSpoc}
-                    onChange={(e) => handleClientChange("contactSpoc", e.target.value)}
-                    fullWidth
-                    InputProps={{ readOnly: !isClientEditing }}
-                  />
+                  <TextField label="Location" value={clientFormValues.location} onChange={(e) => handleClientChange("location", e.target.value)} fullWidth InputProps={{ readOnly: !isClientEditing }} />
+                  <TextField label="Contact SPOC" value={clientFormValues.contactSpoc} onChange={(e) => handleClientChange("contactSpoc", e.target.value)} fullWidth InputProps={{ readOnly: !isClientEditing }} />
                 </Stack>
 
                 {/* Row 3 */}
                 <Stack direction="row" spacing={2}>
-                  <TextField
-                    label="Contact Email"
-                    type="email"
-                    value={clientFormValues.contactEmail}
-                    onChange={(e) => handleClientChange("contactEmail", e.target.value)}
-                    fullWidth
-                    InputProps={{ readOnly: !isClientEditing }}
-                  />
-                  <TextField
-                    label="Contact Number"
-                    value={clientFormValues.contactNumber}
-                    onChange={(e) => handleClientChange("contactNumber", e.target.value)}
-                    fullWidth
-                    InputProps={{ readOnly: !isClientEditing }}
-                  />
+                  <TextField label="Contact Email" type="email" value={clientFormValues.contactEmail} onChange={(e) => handleClientChange("contactEmail", e.target.value)} fullWidth InputProps={{ readOnly: !isClientEditing }} />
+                  <TextField label="Contact Number" value={clientFormValues.contactNumber} onChange={(e) => handleClientChange("contactNumber", e.target.value)} fullWidth InputProps={{ readOnly: !isClientEditing }} />
                 </Stack>
 
                 {/* Row 4 (GST Info) */}
                 <Stack direction="row" spacing={2}>
-                  <TextField
-                    select
-                    label="GST Applicable?"
-                    value={clientFormValues.gstApplicable}
-                    onChange={(e) => handleClientChange("gstApplicable", e.target.value)}
-                    fullWidth
-                    InputProps={{ readOnly: !isClientEditing }}
-                  >
+                  <TextField select label="GST Applicable?" value={clientFormValues.gstApplicable} onChange={(e) => handleClientChange("gstApplicable", e.target.value)} fullWidth InputProps={{ readOnly: !isClientEditing }}>
                     <MenuItem value="Yes">Yes</MenuItem>
                     <MenuItem value="No">No</MenuItem>
                   </TextField>
-                  <TextField
-                    label="GST Number"
-                    value={clientFormValues.gstNumber}
-                    onChange={(e) => handleClientChange("gstNumber", e.target.value)}
-                    fullWidth
-                    disabled={!isClientEditing || clientFormValues.gstApplicable !== "Yes"}
-                  />
+                  <TextField label="GST Number" value={clientFormValues.gstNumber} onChange={(e) => handleClientChange("gstNumber", e.target.value)} fullWidth disabled={!isClientEditing || clientFormValues.gstApplicable !== "Yes"} />
                 </Stack>
 
                 {/* Row 5 */}
                 <Stack direction="row" spacing={2}>
-                  <TextField
-                    label="GST %"
-                    type="number"
-                    value={clientFormValues.gstPercentage}
-                    onChange={(e) => handleClientChange("gstPercentage", e.target.value)}
-                    fullWidth
-                    disabled={!isClientEditing || clientFormValues.gstApplicable !== "Yes"}
-                  />
-                  <TextField
-                    label="Payment Terms (Days)"
-                    type="number"
-                    value={clientFormValues.paymentTerms}
-                    onChange={(e) => handleClientChange("paymentTerms", e.target.value)}
-                    fullWidth
-                    InputProps={{ readOnly: !isClientEditing }}
-                  />
+                  <TextField label="GST %" type="number" value={clientFormValues.gstPercentage} onChange={(e) => handleClientChange("gstPercentage", e.target.value)} fullWidth disabled={!isClientEditing || clientFormValues.gstApplicable !== "Yes"} />
+                  <TextField label="Payment Terms (Days)" type="number" value={clientFormValues.paymentTerms} onChange={(e) => handleClientChange("paymentTerms", e.target.value)} fullWidth InputProps={{ readOnly: !isClientEditing }} />
                 </Stack>
               </Stack>
             )}
@@ -548,7 +469,9 @@ function Home() {
         {/* Add Client Modal */}
         <Modal open={addClientOpen} onClose={() => setAddClientOpen(false)} sx={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
           <Paper elevation={6} sx={{ p: 4, width: { xs: "95vw", sm: "80vw", md: "60vw" }, maxHeight: "90vh", overflowY: "auto", borderRadius: 3, background: "linear-gradient(135deg, #f9fafb 0%, #eef2f7 100%)" }}>
-            <Typography variant="h5" mb={2} fontWeight="bold" color="primary" textAlign="center">Add New Client</Typography>
+            <Typography variant="h5" mb={2} fontWeight="bold" color="primary" textAlign="center">
+              Add New Client
+            </Typography>
 
             {/* Client Details */}
             <Divider sx={{ mb: 3, fontWeight: "bold" }}>Client Details</Divider>
@@ -584,9 +507,13 @@ function Home() {
 
             {/* Submit + Cancel Buttons */}
             <Box sx={{ mt: 4, display: "flex", justifyContent: "flex-end", gap: 2 }}>
-              <Button variant="outlined" color="secondary" size="large" sx={{ px: 4, py: 1.2, borderRadius: 3, textTransform: "none", fontWeight: "bold" }} onClick={() => setAddClientOpen(false)}>Cancel</Button>
+              <Button variant="outlined" color="secondary" size="large" sx={{ px: 4, py: 1.2, borderRadius: 3, textTransform: "none", fontWeight: "bold" }} onClick={() => setAddClientOpen(false)}>
+                Cancel
+              </Button>
 
-              <Button variant="contained" color="primary" size="large" sx={{ px: 4, py: 1.2, borderRadius: 3, textTransform: "none", fontWeight: "bold", boxShadow: "0px 4px 14px rgba(0,0,0,0.2)" }} onClick={handleAddClient}>Add</Button>
+              <Button variant="contained" color="primary" size="large" sx={{ px: 4, py: 1.2, borderRadius: 3, textTransform: "none", fontWeight: "bold", boxShadow: "0px 4px 14px rgba(0,0,0,0.2)" }} onClick={handleAddClient}>
+                Add
+              </Button>
             </Box>
           </Paper>
         </Modal>

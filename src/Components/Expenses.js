@@ -149,35 +149,7 @@ const [selectedMonthYearInput, setSelectedMonthYearInput] = useState("");
     // do not auto fetch without month selection — preserve your previous behavior
   }, []);
 
-  // POST new expense to backend
-  // const handleAddExpense = async () => {
-  //   try {
-  //     const payload = { ...newExpense, paid_date: "00-00-0000" };
-  //     await axios.post("http://localhost:7760/postexpenses", payload);
-
-  //     // REFRESH: fetch fresh data for the currently selected month and apply filters
-  //     const refreshed = await fetchExpenses(selectedMonthYear);
-  //     handleApplyFilterWithData(refreshed);
-
-  //     // Reset form + show success
-  //     setNewExpense({
-  //       regular: "",
-  //       type: "",
-  //       description: "",
-  //       amount: "",
-  //       currency: "INR",
-  //       raised_date: today,
-  //       due_date: "",
-  //       status: "",
-  //     });
-  //     setOpenDialog(false);
-  //     setSnackbarMessage("Expense added successfully!");
-  //     setSnackbarOpen(true);
-  //   } catch (err) {
-  //     console.error("Error adding expense:", err);
-  //   }
-  // };
-const handleAddExpense = async () => {
+  const handleAddExpense = async () => {
   try {
     // Normalize and validate newExpense client-side
     const payload = {
@@ -245,42 +217,68 @@ const handleAddExpense = async () => {
   }
 };
 
-  const handleMarkAsPaid = async (expenseId) => {
-    if (!paidDate || !paidAmount) {
-      alert("⚠️ Please enter both Paid Date and Amount Paid.");
-      return;
-    }
+ const handleMarkAsPaid = async (expenseId) => {
+  if (!paidDate || !paidAmount) {
+    alert("⚠️ Please enter both Paid Date and Amount Paid.");
+    return;
+  }
 
-    // Convert "E7" → 7 (your existing logic)
-    const numericExpenseId = parseInt(expenseId.replace(/\D/g, ""), 10);
+  const numericExpenseId = parseInt(expenseId.replace(/\D/g, ""), 10);
 
-    const payload = {
-      expense_id: numericExpenseId,
-      paid_amount: paidAmount,
-      paid_date: paidDate,
-    };
-
-    try {
-      const response = await axios.put("http://localhost:7760/pay-expense", payload);
-      const data = response.data;
-
-      // Close modal and clear fields
-      setOpenPayDialog(false);
-      setPayExpense(null);
-      setPaidDate("");
-      setPaidAmount("");
-
-      setSnackbarMessage(data.message || "Payment recorded successfully!");
-      setSnackbarOpen(true);
-
-      // REFRESH: fetch fresh data and apply filters immediately so UI updates
-      const refreshed = await fetchExpenses(selectedMonthYear);
-      handleApplyFilterWithData(refreshed);
-    } catch (err) {
-      console.error("❌ Error while paying expense:", err);
-      alert(err.response?.data?.message || "Something went wrong. Please try again.");
-    }
+  const payload = {
+    expense_id: numericExpenseId,
+    paid_amount: Number(paidAmount),
+    paid_date: paidDate,
   };
+
+  try {
+    const response = await axios.put(
+      "http://localhost:7760/pay-expense",
+      payload
+    );
+
+    // ✅ 1️⃣ IMMEDIATE UI UPDATE (THIS WAS MISSING)
+   setFilteredExpenses((prev) =>
+  prev.map((exp) =>
+    exp.expense_id === numericExpenseId &&
+    exp.month_year === selectedMonthYear
+      ? {
+          ...exp,
+          paymentstatus: "Paid",
+          paid_amount: Number(paidAmount),
+          paid_date: paidDate,
+          expensestatus: "Paid",
+        }
+      : exp
+  )
+);
+
+
+    // Close modal
+    setOpenPayDialog(false);
+    setPayExpense(null);
+    setPaidDate("");
+    setPaidAmount("");
+
+    setSnackbarMessage(
+      response.data?.message || "Payment recorded successfully!"
+    );
+    setSnackbarOpen(true);
+
+    // ✅ 2️⃣ BACKEND SYNC (SAFE REFRESH)
+    const monthToUse = selectedMonthYear || selectedMonthYearInput;
+    const refreshed = await fetchExpenses(monthToUse);
+    handleApplyFilterWithData(refreshed);
+
+  } catch (err) {
+    console.error("❌ Error while paying expense:", err);
+    alert(
+      err.response?.data?.message ||
+        "Something went wrong. Please try again."
+    );
+  }
+};
+
 // Open Pay modal and ensure amount is chosen from actual_to_pay OR amount
 const openPayForExpense = (e, exp) => {
   // prevent table row click
@@ -296,67 +294,80 @@ const openPayForExpense = (e, exp) => {
 };
 
   // Updated filter function that accepts data
-  const handleApplyFilterWithData = (data) => {
-    let filtered = data || [];
+const handleApplyFilterWithData = (data, monthParam) => {
+  let filtered = data || [];
 
-    // 🔹 Filter by Regular
-    if (filterRegular !== "all") {
-      filtered = filtered.filter((exp) => exp.regular === filterRegular);
-    }
+  // ✅ determine month safely
+  const monthToUse = monthParam || selectedMonthYear;
 
-    // 🔹 Filter by Type
-    if (filterType !== "all") {
-      filtered = filtered.filter((exp) => exp.type === filterType);
-    }
+  // 🔹 Filter by Regular
+  if (filterRegular !== "all") {
+    filtered = filtered.filter((exp) => exp.regular === filterRegular);
+  }
 
-    // 🔹 Filter by Status
-    if (filterStatus !== "all") {
-      filtered = filtered.filter((exp) => {
-        if (filterStatus === "Paid") {
-          return exp.paymentstatus === "Paid";
-        } else {
-          return exp.expensestatus === filterStatus;
-        }
-      });
-    }
+  // 🔹 Filter by Type
+  if (filterType !== "all") {
+    filtered = filtered.filter((exp) => exp.type === filterType);
+  }
 
-    // 🔹 Month-Year Filter (Correct Logic)
-    if (selectedMonthYear) {
-  const [year, month] = selectedMonthYear.split("-");
-  const selectedYear = Number(year);
-  const selectedMonth = Number(month);
+  // 🔹 Month-Year Filter (carry-forward logic)
+  if (monthToUse) {
+    filtered = filtered.filter((exp) => {
+      const raisedMonth = exp.raised_date?.slice(0, 7);
+      const paidMonth = exp.paid_date?.slice(0, 7);
 
-  filtered = filtered.filter((exp) => {
-    const [expYear, expMonth] = exp.raised_date.split("-").map(Number);
+      // 🔹 PAID → show ONLY in paid month
+      if (exp.paymentstatus === "Paid") {
+        return paidMonth === monthToUse;
+      }
 
-    const paymentExists =
-      exp.actual_to_pay != null && exp.actual_to_pay !== undefined;
+      // 🔹 UNPAID → carry forward until paid
+      return raisedMonth && raisedMonth <= monthToUse;
+    });
+  }
 
-    if (paymentExists) return true;
+  setFilteredExpenses(filtered);
+  setMonthYear(monthToUse); // ✅ important
+  console.log(filtered);
 
-    // For regular = Yes → allow all months up to selected
-    if (exp.regular === "Yes") {
-      return (
-        selectedYear > expYear ||
-        (selectedYear === expYear && selectedMonth >= expMonth)
-      );
-    }
-
-    // Non-regular → must be exact month
-    return (
-      expYear === selectedYear && expMonth === selectedMonth
-    );
-  });
-}
+  const total = filtered.reduce(
+    (sum, exp) => sum + (Number(exp.amount) || 0),
+    0
+  );
+  setTotalExpense(total);
+};
 
 
-    setFilteredExpenses(filtered);
-    setMonthYear(selectedMonthYear);
-    console.log(data);
+// const handleApplyFilterWithData = (data, monthParam) => {
+//   let filtered = data || [];
+//   const monthToUse = monthParam || selectedMonthYear;
 
-    const total = filtered.reduce((sum, exp) => sum + (exp.amount || 0), 0);
-    setTotalExpense(total);
-  };
+//   // Regular
+//   if (filterRegular !== "all") {
+//     filtered = filtered.filter((exp) => exp.regular === filterRegular);
+//   }
+
+//   // Type
+//   if (filterType !== "all") {
+//     filtered = filtered.filter((exp) => exp.type === filterType);
+//   }
+
+//   // ✅ FIXED Month filter
+//   if (monthToUse) {
+//     filtered = filtered.filter((exp) => {
+//       if (exp.paymentstatus === "Paid" && exp.paid_date) {
+//         return exp.paid_date.slice(0, 7) === monthToUse;
+//       }
+//       return exp.raised_date?.slice(0, 7) === monthToUse;
+//     });
+//   }
+
+//   setFilteredExpenses(filtered);
+//   setMonthYear(monthToUse);
+
+//   const total = filtered.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+//   setTotalExpense(total);
+// };
 
   const handleSaveChanges = async () => {
     try {
@@ -520,7 +531,7 @@ const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
             </Select>
           </FormControl> */}
 
-          <Button
+          {/* <Button
   variant="outlined"
   color="warning"
   onClick={async () => {
@@ -529,6 +540,21 @@ const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
     const refreshed = await fetchExpenses(selectedMonthYearInput); // fetch fresh data
     
     handleApplyFilterWithData(refreshed); // apply filters correctly
+  }}
+>
+  Search
+</Button> */}
+
+
+<Button
+  variant="outlined"
+  color="warning"
+  onClick={async () => {
+    const month = selectedMonthYearInput;
+
+    setSelectedMonthYear(month);          // update UI state
+    const refreshed = await fetchExpenses(month); // fetch correct month
+    handleApplyFilterWithData(refreshed, month);  // 🔥 pass month explicitly
   }}
 >
   Search
@@ -707,6 +733,14 @@ const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
               <TableRow style={{ backgroundColor: "#f7f7fb" }}>
                 <TableCell style={{ fontWeight: "700", fontSize: "14px" }}>Regular</TableCell>
                 <TableCell style={{ fontWeight: "700", fontSize: "14px" }}>Type</TableCell>
+                 {/* 🔹 GST extra columns */}
+    {selectedCategory === "GST" && (
+      <>
+        <TableCell>Client Name</TableCell>
+        <TableCell>Project Name</TableCell>
+        <TableCell>Invoice Value</TableCell>
+      </>
+    )}
                 <TableCell style={{ fontWeight: "700", fontSize: "14px" }}>Amount</TableCell>
                 <TableCell style={{ fontWeight: "700", fontSize: "14px" }}>Actual To Pay</TableCell>
                 <TableCell style={{ fontWeight: "700", fontSize: "14px" }}>Status</TableCell>
@@ -716,163 +750,177 @@ const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
             </TableHead>
 
             <TableBody>
-              {filteredRightSide.map((exp, index) => (
-                <TableRow
-                  key={index}
-                  hover
-                  sx={{
-                    cursor: "pointer",
-                    transition: "0.2s",
-                    "&:hover": { backgroundColor: "rgba(99, 102, 241, 0.07)" },
-                  }}
-                  onClick={() => {
-                    setSelectedExpense(exp);
-                    setOpenDetailDialog(true);
-                  }}
-                >
-                  <TableCell style={{ fontSize: "14px" }}>{exp.regular}</TableCell>
+  {filteredRightSide.map((exp, index) => (
+    <TableRow
+     key={`${exp.expense_id}-${exp.month_year}`}
+      hover
+      sx={{
+        cursor: "pointer",
+        transition: "0.2s",
+        "&:hover": { backgroundColor: "rgba(99, 102, 241, 0.07)" },
+      }}
+      onClick={() => {
+        setSelectedExpense(exp);
+        setOpenDetailDialog(true);
+      }}
+    >
+      {/* Regular */}
+      <TableCell style={{ fontSize: "14px" }}>{exp.regular}</TableCell>
 
-                  <TableCell style={{ fontSize: "14px", fontWeight: "600" }}>
-                    <span
-                      style={{
-                        padding: "4px 8px",
-                        backgroundColor: "rgba(99, 102, 241, 0.12)",
-                        borderRadius: "8px",
-                        fontSize: "13px",
-                        color: "#4f46e5",
-                        fontWeight: "600",
-                      }}
-                    >
-                      {exp.type}
-                    </span>
-                  </TableCell>
+      {/* Type */}
+      <TableCell style={{ fontSize: "14px", fontWeight: "600" }}>
+        <span
+          style={{
+            padding: "4px 8px",
+            backgroundColor: "rgba(99, 102, 241, 0.12)",
+            borderRadius: "8px",
+            fontSize: "13px",
+            color: "#4f46e5",
+            fontWeight: "600",
+          }}
+        >
+          {exp.type}
+        </span>
+      </TableCell>
 
-                  <TableCell style={{ fontSize: "14px", fontWeight: "600" }}>{formatCurrency(exp.amount)}</TableCell>
+      {/* 🔹 GST EXTRA COLUMNS */}
+      {selectedCategory === "GST" && (
+        <>
+          <TableCell style={{ fontSize: "14px", fontWeight: "600" }}>
+            {exp.client_name || "-"}
+          </TableCell>
 
-                  {/* Actual To Pay */}
-                  <TableCell style={{ fontWeight: "600", fontSize: "14px" }}>
-                    {exp.paymentstatus === "Paid" ? (
-                      <div style={{ display: "flex", flexDirection: "column" }}>
-                        <span style={{ color: "green", fontWeight: "700" }}>Paid: {formatCurrency(exp.paid_amount)}</span>
-                        <span style={{ fontSize: "12px", color: "#6b7280" }}>
-                          Date: {exp.paid_date ? new Date(exp.paid_date).toLocaleDateString("en-GB").replaceAll("/", "-") : "-"}
-                        </span>
-                      </div>
-                    ) : exp.actual_to_pay ? (
-                      <div style={{ display: "flex", flexDirection: "column" }}>
-                        <span>{formatCurrency(exp.actual_to_pay)}</span>
-                        <span style={{ fontSize: "12px", color: "#6b7280" }}>
-                          Due: {exp.due_date ? new Date(exp.due_date).toLocaleDateString("en-GB").replaceAll("/", "-") : "-"}
-                        </span>
-                      </div>
-                    ) : (
-                      <Link
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setUpdateExpense(exp);
-                          setOpenUpdateDialog(true);
-                        }}
-                        style={{
-                          cursor: "pointer",
-                          textDecoration: "underline",
-                          color: "#2563eb",
-                          fontWeight: "600",
-                        }}
-                      >
-                        Update
-                      </Link>
-                    )}
-                  </TableCell>
+          <TableCell style={{ fontSize: "14px", fontWeight: "600" }}>
+            {exp.project_name || "-"}
+          </TableCell>
 
-                  {/* Status */}
-                  <TableCell
-                    style={{
-                      fontWeight: "700",
-                      color:
-                        exp.paymentstatus === "Paid"
-                          ? "green"
-                          : exp.paymentstatus === "Hold"
-                          ? "gray"
-                          : exp.paymentstatus === "Rejected"
-                          ? "red"
-                          : exp.paymentstatus === "Raised"
-                          ? "#2563eb"
-                          : "orange",
-                      fontSize: "14px",
-                    }}
-                  >
-                    {exp.paymentstatus || "Pending"}
-                  </TableCell>
+          <TableCell style={{ fontSize: "14px", fontWeight: "700" }}>
+            {exp.invoice_value
+              ? formatCurrency(exp.invoice_value)
+              : "-"}
+          </TableCell>
+        </>
+      )}
 
-                  {/* Paid Date */}
-                  <TableCell style={{ fontSize: "14px", fontWeight: "600" }}>
-                    {exp.paid_date && exp.paid_date !== "00-00-0000" && !isNaN(Date.parse(exp.paid_date)) ? (
-                      new Date(exp.paid_date).toLocaleDateString("en-GB").replaceAll("/", "-")
-                    ) : (
-                      <span style={{ color: "red", fontWeight: "700" }}>Not Paid</span>
-                    )}
-                  </TableCell>
+      {/* Amount */}
+      <TableCell style={{ fontSize: "14px", fontWeight: "600" }}>
+        {formatCurrency(exp.amount)}
+      </TableCell>
 
-                  {/* Action */}
-                 <TableCell>
-  {exp.paymentstatus === "Paid" ? (
-    <VerifiedRoundedIcon style={{ color: "green", fontSize: "32px", transform: "rotate(-10deg)" }} />
-  ) : (
-    <>
-      <Button
-        variant="contained"
-        size="small"
-        sx={{
-          backgroundColor: "rgba(7, 186, 126, 0.85)",
+      {/* Actual To Pay */}
+      <TableCell style={{ fontWeight: "600", fontSize: "14px" }}>
+        {exp.paymentstatus === "Paid" ? (
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <span style={{ color: "green", fontWeight: "700" }}>
+              Paid: {formatCurrency(exp.paid_amount)}
+            </span>
+            <span style={{ fontSize: "12px", color: "#6b7280" }}>
+              Date:{" "}
+              {exp.paid_date
+                ? new Date(exp.paid_date)
+                    .toLocaleDateString("en-GB")
+                    .replaceAll("/", "-")
+                : "-"}
+            </span>
+          </div>
+        ) : exp.actual_to_pay ? (
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <span>{formatCurrency(exp.actual_to_pay)}</span>
+            <span style={{ fontSize: "12px", color: "#6b7280" }}>
+              Due:{" "}
+              {exp.due_date
+                ? new Date(exp.due_date)
+                    .toLocaleDateString("en-GB")
+                    .replaceAll("/", "-")
+                : "-"}
+            </span>
+          </div>
+        ) : (
+          <Link
+            onClick={(e) => {
+              e.stopPropagation();
+              setUpdateExpense(exp);
+              setOpenUpdateDialog(true);
+            }}
+            style={{
+              cursor: "pointer",
+              textDecoration: "underline",
+              color: "#2563eb",
+              fontWeight: "600",
+            }}
+          >
+            Update
+          </Link>
+        )}
+      </TableCell>
+
+      {/* Status */}
+      <TableCell
+        style={{
           fontWeight: "700",
-          borderRadius: "6px",
-          marginRight: "8px",
-          marginBottom: "7px",
-        }}
-        onClick={(e) => openPayForExpense(e, exp)}
-      >
-        Pay
-      </Button>
-
-      {/* <Button
-        variant="contained"
-        size="small"
-        sx={{ backgroundColor: "#f59e0b", fontWeight: "700", borderRadius: "6px" }}
-        onClick={(e) => {
-          e.stopPropagation();
-          setHoldExpense(exp);
-          setOpenHoldDialog(true);
+          color:
+            exp.paymentstatus === "Paid"
+              ? "green"
+              : exp.paymentstatus === "Hold"
+              ? "gray"
+              : exp.paymentstatus === "Rejected"
+              ? "red"
+              : exp.paymentstatus === "Raised"
+              ? "#2563eb"
+              : "orange",
+          fontSize: "14px",
         }}
       >
-        Hold
-      </Button> */}
-    </>
-  )}
-</TableCell>
+        {exp.paymentstatus || "Pending"}
+      </TableCell>
 
-                </TableRow>
-              ))}
-            </TableBody>
+      {/* Paid Date */}
+      <TableCell style={{ fontSize: "14px", fontWeight: "600" }}>
+        {exp.paid_date &&
+        exp.paid_date !== "00-00-0000" &&
+        !isNaN(Date.parse(exp.paid_date)) ? (
+          new Date(exp.paid_date)
+            .toLocaleDateString("en-GB")
+            .replaceAll("/", "-")
+        ) : (
+          <span style={{ color: "red", fontWeight: "700" }}>
+            Not Paid
+          </span>
+        )}
+      </TableCell>
+
+      {/* Action */}
+      <TableCell>
+        {exp.paymentstatus === "Paid" ? (
+          <VerifiedRoundedIcon
+            style={{
+              color: "green",
+              fontSize: "32px",
+              transform: "rotate(-10deg)",
+            }}
+          />
+        ) : (
+          <Button
+            variant="contained"
+            size="small"
+            sx={{
+              backgroundColor: "rgba(7, 186, 126, 0.85)",
+              fontWeight: "700",
+              borderRadius: "6px",
+            }}
+            onClick={(e) => openPayForExpense(e, exp)}
+          >
+            Pay
+          </Button>
+        )}
+      </TableCell>
+    </TableRow>
+  ))}
+</TableBody>
+
           </Table>
         </TableContainer>
       </div>
-
-      {/* Hold dialog
-      <Dialog open={openHoldDialog} onClose={() => setOpenHoldDialog(false)}>
-        <DialogTitle>Hold Expense</DialogTitle>
-        <DialogContent>Are you sure you want to put this expense on hold?</DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenHoldDialog(false)}>Cancel</Button>
-          <Button
-            onClick={() => {
-              // optional: call hold API; for now just close
-              setOpenHoldDialog(false);
-            }}
-          >
-            Confirm
-          </Button>
-        </DialogActions>
-      </Dialog> */}
 
       {/* Update Actual TO pay Dialog */}
       <Dialog open={openUpdateDialog} onClose={() => setOpenUpdateDialog(false)} maxWidth="xs" fullWidth={false}>
@@ -916,16 +964,16 @@ const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
   actual_amount: updateExpense.actual_to_pay ?? updateExpense.amount,
   due_date: updateExpense.due_date,
 };
-
-
-              try {
+ try {
                 await axios.post("http://localhost:7760/saveExpensePayment", payload);
                 alert("Expense Updated Successfully");
                 setOpenUpdateDialog(false);
 
                 // REFRESH immediately and apply filter so UI reflects changes
-                const refreshed = await fetchExpenses(selectedMonthYear);
-                handleApplyFilterWithData(refreshed);
+                const monthToUse = selectedMonthYear || selectedMonthYearInput;
+const refreshed = await fetchExpenses(monthToUse);
+handleApplyFilterWithData(refreshed);
+
               } catch (err) {
                 console.error(err);
                 alert("Error saving expense");
@@ -936,144 +984,214 @@ const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
           </Button>
         </DialogActions>
       </Dialog>
+{/* Detail Dialog */}
+<Dialog
+  open={openDetailDialog}
+  onClose={() => setOpenDetailDialog(false)}
+  maxWidth="sm"
+  fullWidth
+>
+  <DialogTitle style={{ fontWeight: "bold" }}>
+    Expense Details
+  </DialogTitle>
 
-      {/* Detail Dialog */}
-      <Dialog open={openDetailDialog} onClose={() => setOpenDetailDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle style={{ fontWeight: "bold" }}>Expense Details</DialogTitle>
-        <DialogContent dividers>
-          {selectedExpense && (
-            <Table size="small">
-              <TableBody>
-                <TableRow>
-                  <TableCell><strong>ID</strong></TableCell>
-                  <TableCell>{selectedExpense.id}</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell><strong>Type</strong></TableCell>
-                  <TableCell>{selectedExpense.type}</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell><strong>Description</strong></TableCell>
-                  <TableCell>{selectedExpense.description}</TableCell>
-                </TableRow>
+  <DialogContent dividers>
+    {selectedExpense && (
+      <Table size="small">
+        <TableBody>
 
-                <TableRow>
-                  <TableCell><strong>Regular</strong></TableCell>
-                  <TableCell>
-                    {isEditing ? (
-                      <TextField select value={selectedExpense.regular || ""} onChange={(e) => setSelectedExpense({ ...selectedExpense, regular: e.target.value })} fullWidth size="small">
-                        <MenuItem value="Yes">Yes</MenuItem>
-                        <MenuItem value="No">No</MenuItem>
-                      </TextField>
-                    ) : (
-                      selectedExpense.regular
-                    )}
-                  </TableCell>
-                </TableRow>
+          {/* ID */}
+          <TableRow>
+            <TableCell><strong>ID</strong></TableCell>
+            <TableCell>{selectedExpense.id}</TableCell>
+          </TableRow>
 
-                <TableRow>
-                  <TableCell><strong>Amount</strong></TableCell>
-                  <TableCell>
-                    {isEditing ? (
-                      <TextField type="number" value={selectedExpense.amount || ""} onChange={(e) => setSelectedExpense({ ...selectedExpense, amount: e.target.value })} fullWidth variant="outlined" size="small" />
-                    ) : (
-                      formatCurrency(selectedExpense.amount)
-                    )}
-                  </TableCell>
-                </TableRow>
+          {/* Month (VERY IMPORTANT) */}
+          <TableRow>
+            <TableCell><strong>Month</strong></TableCell>
+            <TableCell>
+              {selectedExpense.month_year
+                ? new Date(selectedExpense.month_year + "-01")
+                    .toLocaleString("en-GB", { month: "long", year: "numeric" })
+                : "-"}
+            </TableCell>
+          </TableRow>
 
-                <TableRow>
-                  <TableCell><strong>{selectedExpense.regular === "Yes" ? "Start Date" : "Raised Date"}</strong></TableCell>
-                  <TableCell>
-                    {isEditing ? (
-                      <TextField type="date" value={selectedExpense.raised_date ? new Date(selectedExpense.raised_date).toISOString().split("T")[0] : ""} onChange={(e) => setSelectedExpense({ ...selectedExpense, raised_date: e.target.value })} fullWidth size="small" />
-                    ) : selectedExpense.raised_date ? (
-                      new Date(selectedExpense.raised_date).toLocaleDateString("en-GB").replaceAll("/", "-")
-                    ) : (
-                      "-"
-                    )}
-                  </TableCell>
-                </TableRow>
+          {/* Type */}
+          <TableRow>
+            <TableCell><strong>Type</strong></TableCell>
+            <TableCell>{selectedExpense.type}</TableCell>
+          </TableRow>
 
-                {/* Due Date */}
-                <TableRow>
-                  <TableCell><strong>Due Date</strong></TableCell>
-                  <TableCell>
-                    {isEditing ? (
-                      <TextField type="date" value={selectedExpense.due_date ? new Date(selectedExpense.due_date).toISOString().split("T")[0] : ""} onChange={(e) => setSelectedExpense({ ...selectedExpense, due_date: e.target.value })} fullWidth size="small" />
-                    ) : (
-                      (() => {
-                        if (!selectedExpense.due_date) return "-";
-                        const due = new Date(selectedExpense.due_date);
-                        let displayedDate = new Date(due);
-                        if (selectedExpense.regular === "Yes" && selectedMonthYear) {
-                          const selected = new Date(selectedMonthYear + "-01");
-                          const monthDiff = (selected.getFullYear() - due.getFullYear()) * 12 + (selected.getMonth() - due.getMonth());
-                          displayedDate.setMonth(due.getMonth() + monthDiff + 1);
-                        }
-                        return displayedDate.toLocaleDateString("en-GB").replaceAll("/", "-");
-                      })()
-                    )}
-                  </TableCell>
-                </TableRow>
+          {/* Description */}
+          <TableRow>
+            <TableCell><strong>Description</strong></TableCell>
+            <TableCell>{selectedExpense.description}</TableCell>
+          </TableRow>
 
-                <TableRow>
-                  <TableCell><strong>Status</strong></TableCell>
-                  <TableCell>
-                    {isEditing ? (
-                      <TextField select value={selectedExpense.status || ""} onChange={(e) => setSelectedExpense({ ...selectedExpense, status: e.target.value })} fullWidth size="small">
-                        <MenuItem value="Raised">Raised</MenuItem>
-                        <MenuItem value="Pending">Pending</MenuItem>
-                        <MenuItem value="Hold">Hold</MenuItem>
-                        <MenuItem value="Rejected">Rejected</MenuItem>
-                      </TextField>
-                    ) : (
-                      <span style={{ fontWeight: "bold", color: selectedExpense.status === "Raised" ? "blue" : selectedExpense.status === "Pending" ? "orange" : selectedExpense.status === "Paid" ? "green" : selectedExpense.status === "Hold" ? "gray" : "red" }}>
-                        {selectedExpense.status}
-                      </span>
-                    )}
-                  </TableCell>
-                </TableRow>
+          {/* Regular */}
+          <TableRow>
+            <TableCell><strong>Regular</strong></TableCell>
+            <TableCell>
+              {isEditing ? (
+                <TextField
+                  select
+                  value={selectedExpense.regular || ""}
+                  onChange={(e) =>
+                    setSelectedExpense({
+                      ...selectedExpense,
+                      regular: e.target.value,
+                    })
+                  }
+                  fullWidth
+                  size="small"
+                >
+                  <MenuItem value="Yes">Yes</MenuItem>
+                  <MenuItem value="No">No</MenuItem>
+                </TextField>
+              ) : (
+                selectedExpense.regular
+              )}
+            </TableCell>
+          </TableRow>
 
-                <TableRow>
-                  <TableCell><strong>Paid Amount</strong></TableCell>
-                  <TableCell>
-                    {selectedExpense.paid_amount && selectedExpense.paymentstatus === "Paid" ? formatCurrency(selectedExpense.paid_amount) : <span style={{ color: "red", fontWeight: 600 }}>Not Paid</span>}
-                  </TableCell>
-                </TableRow>
+          {/* Amount */}
+          <TableRow>
+            <TableCell><strong>Amount</strong></TableCell>
+            <TableCell>
+              {isEditing ? (
+                <TextField
+                  type="number"
+                  value={selectedExpense.amount || ""}
+                  onChange={(e) =>
+                    setSelectedExpense({
+                      ...selectedExpense,
+                      amount: e.target.value,
+                    })
+                  }
+                  fullWidth
+                  size="small"
+                />
+              ) : (
+                formatCurrency(selectedExpense.amount)
+              )}
+            </TableCell>
+          </TableRow>
 
-                <TableRow>
-                  <TableCell><strong>Paid Date</strong></TableCell>
-                  <TableCell>
-                    {selectedExpense.paid_date && selectedExpense.paymentstatus === "Paid" && !isNaN(Date.parse(selectedExpense.paid_date)) ? new Date(selectedExpense.paid_date).toLocaleDateString("en-GB").replaceAll("/", "-") : <span style={{ color: "red", fontWeight: 600 }}>Not Paid</span>}
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          )}
-        </DialogContent>
+          {/* Original Start Date */}
+          <TableRow>
+            <TableCell>
+              <strong>
+                {selectedExpense.regular === "Yes"
+                  ? "Original Start Date"
+                  : "Raised Date"}
+              </strong>
+            </TableCell>
+            <TableCell>
+              {selectedExpense.raised_date
+                ? new Date(selectedExpense.raised_date)
+                    .toLocaleDateString("en-GB")
+                    .replaceAll("/", "-")
+                : "-"}
+            </TableCell>
+          </TableRow>
 
-        <DialogActions>
-          {isEditing ? (
-            <>
-              <Button variant="contained" color="success" onClick={handleSaveChanges}>
-                Save
-              </Button>
-              <Button variant="outlined" color="error" onClick={() => setIsEditing(false)}>
-                Cancel
-              </Button>
-            </>
-          ) : (
-            <Button variant="outlined" color="success" onClick={() => setIsEditing(true)}>
-              <EditIcon />
-            </Button>
-          )}
+          {/* Month Due Date */}
+          <TableRow>
+            <TableCell><strong>Due Date (This Month)</strong></TableCell>
+            <TableCell>
+              {selectedExpense.due_date
+                ? new Date(selectedExpense.due_date)
+                    .toLocaleDateString("en-GB")
+                    .replaceAll("/", "-")
+                : "-"}
+            </TableCell>
+          </TableRow>
 
-          <Button variant="contained" color="error" onClick={() => setOpenDetailDialog(false)}>
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
+          {/* Payment Status */}
+          <TableRow>
+            <TableCell><strong>Payment Status</strong></TableCell>
+            <TableCell>
+              <strong
+                style={{
+                  color:
+                    selectedExpense.paymentstatus === "Paid"
+                      ? "green"
+                      : "orange",
+                }}
+              >
+                {selectedExpense.paymentstatus || "Pending"}
+              </strong>
+            </TableCell>
+          </TableRow>
+
+          {/* Paid Amount */}
+          <TableRow>
+            <TableCell><strong>Paid Amount</strong></TableCell>
+            <TableCell>
+              {selectedExpense.paymentstatus === "Paid"
+                ? formatCurrency(selectedExpense.paid_amount)
+                : <span style={{ color: "red" }}>Not Paid</span>}
+            </TableCell>
+          </TableRow>
+
+          {/* Paid Date */}
+          <TableRow>
+            <TableCell><strong>Paid Date</strong></TableCell>
+            <TableCell>
+              {selectedExpense.paymentstatus === "Paid" &&
+              selectedExpense.paid_date
+                ? new Date(selectedExpense.paid_date)
+                    .toLocaleDateString("en-GB")
+                    .replaceAll("/", "-")
+                : <span style={{ color: "red" }}>Not Paid</span>}
+            </TableCell>
+          </TableRow>
+
+        </TableBody>
+      </Table>
+    )}
+  </DialogContent>
+
+  {/* 🔹 ACTION BUTTONS (SAVE & CANCEL INCLUDED) */}
+  <DialogActions>
+    {isEditing ? (
+      <>
+        <Button
+          variant="contained"
+          color="success"
+          onClick={handleSaveChanges}
+        >
+          Save
+        </Button>
+
+        <Button
+          variant="outlined"
+          color="error"
+          onClick={() => setIsEditing(false)}
+        >
+          Cancel
+        </Button>
+      </>
+    ) : (
+      <Button
+        variant="outlined"
+        color="success"
+        onClick={() => setIsEditing(true)}
+      >
+        <EditIcon />
+      </Button>
+    )}
+
+    <Button
+      variant="contained"
+      color="error"
+      onClick={() => setOpenDetailDialog(false)}
+    >
+      Close
+    </Button>
+  </DialogActions>
+</Dialog>
 
       {/* Snackbar */}
       <Snackbar open={snackbarOpen} autoHideDuration={3000} onClose={() => setSnackbarOpen(false)} anchorOrigin={{ vertical: "top", horizontal: "center" }}>
@@ -1102,7 +1220,31 @@ const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
                     <TableCell><strong>Type</strong></TableCell>
                     <TableCell>{payExpense.type}</TableCell>
                   </TableRow>
-                  <TableRow>
+                  {/* 🔹 GST-specific details */}
+{/* 🔹 GST-specific details */}
+{payExpense?.type === "GST" && (
+  <>
+    <TableRow>
+      <TableCell><strong>Client Name</strong></TableCell>
+      <TableCell>{payExpense.client_name || "-"}</TableCell>
+    </TableRow>
+
+    <TableRow>
+      <TableCell><strong>Project Name</strong></TableCell>
+      <TableCell>{payExpense.project_name || "-"}</TableCell>
+    </TableRow>
+
+    <TableRow>
+      <TableCell><strong>Invoice Value</strong></TableCell>
+      <TableCell>
+        {payExpense.invoice_value
+          ? formatCurrency(payExpense.invoice_value)
+          : "-"}
+      </TableCell>
+    </TableRow>
+  </>
+)}
+<TableRow>
                     <TableCell><strong>Description</strong></TableCell>
                     <TableCell>{payExpense.description}</TableCell>
                   </TableRow>
