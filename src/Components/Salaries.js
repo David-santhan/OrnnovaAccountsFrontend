@@ -2317,32 +2317,6 @@ const calculateSalary = (salary) => {
             <TableCell>Monthly (₹)</TableCell>
           </TableRow>
         </TableHead>
-        {/* <TableBody>
-          {[
-            { label: "Employee PF", monthly: "pf", yearly: "pf_yearly" },
-            { label: "Employer PF", monthly: "employer_pf", yearly: "employer_pf_yearly" },
-            { label: "Insurance", monthly: "insurance", yearly: "insurance_yearly" },
-            { label: "Employer Insurance", monthly: "employer_health_insurance", yearly: "employer_health_insurance_yearly" },
-            { label: "Professional Tax", monthly: "professional_tax", yearly: "professional_tax_yearly" },
-          ].map(row => (
-            <TableRow key={row.label}>
-              <TableCell>{row.label}</TableCell>
-              <TableCell>
-                <TextField
-                  value={newSalary[row.yearly] || ""}
-                  InputProps={{ readOnly: true }}
-                />
-              </TableCell>
-              <TableCell>
-                <TextField
-                  value={newSalary[row.monthly] || ""}
-                  onChange={(e) => handleSalaryChange(row.monthly, e.target.value)}
-                />
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody> */}
-
  <TableBody>
   {[
     { label: "Employee PF", monthly: "pf", yearly: "pf_yearly" },
@@ -2369,16 +2343,7 @@ const calculateSalary = (salary) => {
           {/* Monthly cell: Monthly + Members + Total Monthly */}
           <TableCell>
             <Box sx={{ display: "flex", gap: 1 }}>
-              {/* This is what you type: 500, 600 etc. (for one person) */}
-              {/* <TextField
-                label="Monthly (₹)"
-                type="number"
-                value={newSalary.insurance_per_head ?? ""}
-                onChange={(e) =>
-                  handleSalaryChange("insurance_per_head", e.target.value)
-                }
-                sx={{ width: 130 }}
-              /> */}
+             
               <TextField
                 label="Members"
                 type="number"

@@ -54,11 +54,7 @@ function Projects() {
   const [empModalSearch, setEmpModalSearch] = useState("");
   const [empModalSelected, setEmpModalSelected] = useState([]); // local selection in modal (array of {id,name})
   const [empModalContext, setEmpModalContext] = useState("add"); // "add" or "edit"
-//   const [formValues, setFormValues] = useState({
-//   ...selectedProject,
-//   isFixed: selectedProject?.isFixed || "No",
-//   milestones: selectedProject?.milestones || [],
-// });
+
 
 const recalcMilestone = (m) => {
   const base = Number(m.baseValue) || 0;
@@ -108,16 +104,6 @@ const updateMilestone = (index, field, value) => {
 
   setIsDirty(true);
 };
-
-
-// const updateMilestone = (index, field, value) => {
-//   const updated = [...newProject.milestones];
-//   updated[index] = recalcMilestone({
-//     ...updated[index],
-//     [field]: value,
-//   });
-//   setNewProject({ ...newProject, milestones: updated });
-// };
 
 // initial new project template
 const initialNewProject = {
@@ -173,13 +159,6 @@ const setCurrentProject = isEditing ? setFormValues : setNewProject;
     startMonth: selectedProject.startMonth || "",
   });
 }, [selectedProject]);
-
-// if (formValues.isFixed === "Yes") {
-//   setFormValues({ ...formValues, [field]: value });
-//   setIsDirty(true);
-//   return;
-// }
-
 
  const handleEditChange = (field, value) => {
   // ✅ FIXED PROJECT: do not recalc billing
@@ -272,49 +251,6 @@ const updateEditMilestone = (index, field, value) => {
   setIsDirty(true);
 };
 
-  // const handleSave = async () => {
-  //   try {
-  //     const formData = new FormData();
-
-  //     // Append all fields safely
-  //     Object.keys(formValues).forEach((key) => {
-  //       if (key === "purchaseOrder" && formValues.purchaseOrder instanceof File) {
-  //         formData.append("purchaseOrder", formValues.purchaseOrder);
-  //       } else if (key === "employees") {
-  //         formData.append("employees", JSON.stringify(formValues.employees || []));
-  //       } else {
-  //         formData.append(key, formValues[key] ?? "");
-  //       }
-  //     });
-
-  //     const res = await axios.put(
-  //       `http://localhost:7760/update-project/${formValues.projectID}`,
-  //       formData,
-  //       {
-  //         headers: {
-  //           "Content-Type": "multipart/form-data",
-  //         },
-  //       }
-  //     );
-
-  //     if (res.data.success) {
-  //       const refreshed = await fetch("http://localhost:7760/getprojects").then((r) =>
-  //         r.json()
-  //       );
-  //       setAllProjects(refreshed);
-  //       setProjects(refreshed);
-  //       setIsDirty(false);
-  //       setSuccessMessage("✅ Project updated successfully!");
-  //       setTimeout(() => setSuccessMessage(""), 3000);
-  //     }
-  //   } catch (error) {
-  //     console.error("Error updating project:", error);
-  //     alert("Failed to update project!");
-  //   }
-  // };
-
-  // Fetch existing projects, clients, employees
-  
   const handleSave = async () => {
   try {
     const formData = new FormData();
@@ -370,8 +306,7 @@ const updateEditMilestone = (index, field, value) => {
   }
 };
 
-  
-  useEffect(() => {
+useEffect(() => {
     fetch("http://localhost:7760/getprojects")
       .then((res) => res.json())
       .then((data) => {
@@ -653,9 +588,7 @@ const updateEditMilestone = (index, field, value) => {
     setIsDirty(false);
     setOpenPreview(true);
   };
-
-
-  const handleClose = () => {
+const handleClose = () => {
     setSelectedProject(null);
     setOpenPreview(false);
     setIsEditing(false);
@@ -765,9 +698,7 @@ const updateEditMilestone = (index, field, value) => {
     formData.append(key, newProject[key] ?? "");
   }
 });
-
-
-      const response = await fetch("http://localhost:7760/addproject", {
+const response = await fetch("http://localhost:7760/addproject", {
         method: "POST",
         body: formData,
       });
@@ -814,17 +745,24 @@ const updateEditMilestone = (index, field, value) => {
     }
   };
 
-  const deleteProject = async (projectID) => {
-    try {
-      await axios.delete(`http://localhost:7760/deleteproject/${projectID}`);
-      setProjects(projects.filter((p) => p.projectID !== projectID));
-      setOpenDeleteDialog(false);
-      setProjectToDelete(null);
-    } catch (error) {
-      console.log(error);
-      alert("Failed to delete project");
-    }
-  };
+ const deleteProject = async (projectID) => {
+  try {
+    await axios.delete(`http://localhost:7760/deleteproject/${projectID}`);
+
+    // ✅ remove from visible list
+    setProjects((prev) => prev.filter((p) => p.projectID !== projectID));
+
+    // ✅ remove from master list
+    setAllProjects((prev) => prev.filter((p) => p.projectID !== projectID));
+
+    setOpenDeleteDialog(false);
+    setProjectToDelete(null);
+  } catch (error) {
+    console.error("Delete failed:", error);
+    alert("Failed to delete project");
+  }
+};
+
 
   return (
     <Box sx={{ p: 3 }}>
@@ -1109,41 +1047,66 @@ const updateEditMilestone = (index, field, value) => {
                 <TextField label="Mail ID" name="mailID" type="email" value={formValues.mailID || ""} onChange={(e) => handleEditChange("mailID", e.target.value)} fullWidth margin="normal" />
                 <TextField label="Mobile No" name="mobileNo" type="text" value={formValues.mobileNo || ""} onChange={(e) => handleEditChange("mobileNo", e.target.value)} fullWidth margin="normal" />
               </div>
+{(
+  formValues.isFixed !== "Yes" ||
+  (formValues.isFixed === "Yes" && (!formValues.milestones || formValues.milestones.length === 0))
+) && (
+  <Divider
+    textAlign="center"
+    sx={{
+      marginY: 2,
+      "&::before, &::after": {
+        borderColor: "#50a7ffff",
+        borderWidth: "2px",
+      },
+    }}
+  >
+    <Box
+      sx={{
+        backgroundColor: "#1976d2",
+        color: "white",
+        px: 3,
+        py: 0.5,
+        borderRadius: "6px",
+        display: "inline-block",
+        fontWeight: "bold",
+        letterSpacing: "0.5px",
+        boxShadow: "0 2px 6px rgba(25, 118, 210, 0.3)",
+      }}
+    >
+      Billing Details
+    </Box>
+  </Divider>
+)}
 
-              
-    <div style={{ display: "flex", gap: "1rem" }}>
-  <TextField
-  select
-  label="Project Type"
-  name="isFixed"
-  value={formValues.isFixed}
-  onChange={(e) =>
-    setFormValues({
-      ...formValues,
-      isFixed: e.target.value,
-    })
-  }
-/>
-{/* {formValues.isFixed === "Yes" && (
+{/* 🔹 MILESTONES SECTION */}
+{formValues.isFixed === "Yes" && (
   <>
-    <Divider sx={{ my: 2 }}>Milestones</Divider>
-    {formValues.milestones?.map((m, idx) => (
-      <Box key={idx} sx={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr", gap: 1, mb: 1 }}>
-        <TextField value={m.name} label="Milestone" InputProps={{ readOnly: true }} />
-        <TextField value={m.baseValue} label="Base" InputProps={{ readOnly: true }} />
-        <TextField value={m.gstPercent} label="GST %" InputProps={{ readOnly: true }} />
-        <TextField value={m.tdsPercent} label="TDS %" InputProps={{ readOnly: true }} />
-        <TextField value={m.netPayable} label="Net" InputProps={{ readOnly: true }} />
-        <TextField value={m.invoiceMonth} label="Month" InputProps={{ readOnly: true }} />
+    <Divider
+      textAlign="center"
+      sx={{
+        my: 3,
+        "&::before, &::after": {
+          borderColor: "#50a7ffff",
+          borderWidth: 2,
+        },
+      }}
+    >
+      <Box
+        sx={{
+          backgroundColor: "#1976d2",
+          color: "white",
+          px: 3,
+          py: 0.5,
+          borderRadius: "6px",
+          fontWeight: "bold",
+        }}
+      >
+        Milestones
       </Box>
-    ))}
-  </>
-)} */}
-{currentProject.isFixed === "Yes" && (
-  <>
-    <Divider sx={{ my: 2 }}>Milestones</Divider>
+    </Divider>
 
-    {currentProject.milestones.map((m, index) => (
+    {formValues.milestones.map((m, index) => (
       <Box
         key={index}
         sx={{
@@ -1154,154 +1117,247 @@ const updateEditMilestone = (index, field, value) => {
         }}
       >
         <TextField
-          label="Milestone Name"
           value={m.name}
-          onChange={(e) => updateMilestone(index, "name", e.target.value)}
-          InputProps={{ readOnly: !isEditing && openPreview }}
+          onChange={(e) =>
+            updateEditMilestone(index, "name", e.target.value)
+          }
+          InputProps={{ readOnly: !isEditing }}
         />
 
         <TextField
-          label="Base Value"
-          type="number"
           value={m.baseValue}
-          onChange={(e) => updateMilestone(index, "baseValue", e.target.value)}
-          InputProps={{ readOnly: !isEditing && openPreview }}
+          onChange={(e) =>
+            updateEditMilestone(index, "baseValue", e.target.value)
+          }
+          InputProps={{ readOnly: !isEditing }}
         />
 
         <TextField
-          label="GST %"
-          type="number"
           value={m.gstPercent}
-          onChange={(e) => updateMilestone(index, "gstPercent", e.target.value)}
-          InputProps={{ readOnly: !isEditing && openPreview }}
+          onChange={(e) =>
+            updateEditMilestone(index, "gstPercent", e.target.value)
+          }
+          InputProps={{ readOnly: !isEditing }}
         />
 
         <TextField
-          label="TDS %"
-          type="number"
           value={m.tdsPercent}
-          onChange={(e) => updateMilestone(index, "tdsPercent", e.target.value)}
-          InputProps={{ readOnly: !isEditing && openPreview }}
+          onChange={(e) =>
+            updateEditMilestone(index, "tdsPercent", e.target.value)
+          }
+          InputProps={{ readOnly: !isEditing }}
         />
 
-        <TextField
-          label="Net Payable"
-          value={m.netPayable}
-          InputProps={{ readOnly: true }}
-          sx={{ backgroundColor: "#e8f5e9" }}
-        />
+        <TextField value={m.netPayable} InputProps={{ readOnly: true }} />
 
         <TextField
-          label="Invoice Month"
           type="month"
           value={m.invoiceMonth}
-          onChange={(e) => updateMilestone(index, "invoiceMonth", e.target.value)}
-          InputProps={{ readOnly: !isEditing && openPreview }}
+          onChange={(e) =>
+            updateEditMilestone(index, "invoiceMonth", e.target.value)
+          }
+          InputProps={{ readOnly: !isEditing }}
         />
       </Box>
     ))}
 
-    {(isEditing || !openPreview) && (
-      <Box sx={{ mt: 2 }}>
-        <Button variant="outlined" onClick={addMilestone}>
-          + Add Milestone
-        </Button>
-      </Box>
+    {isEditing && (
+      <Button variant="outlined" onClick={addEditMilestone}>
+        + Add Milestone
+      </Button>
     )}
-
   </>
 )}
 
-  {newProject.isFixed === "Yes" && (
-    <TextField
-      type="month"
-      label="Start Month"
-      name="startMonth"
-      value={newProject.startMonth}
-      onChange={handleChange}
-      fullWidth
-      margin="normal"
-      InputLabelProps={{ shrink: true }}
-      error={!newProject.startMonth}
-      helperText={!newProject.startMonth ? "Start Month is required for Fixed projects" : ""}
-    />
-  )}
-</div>
-  <Divider textAlign="center" sx={{ marginY: 2, "&::before, &::after": { borderColor: "#50a7ffff", borderWidth: "2px", color: "darkblue", fontSize: "20px", fontWeight: "bold" } }}>
-                <Box sx={{ backgroundColor: "#1976d2", color: "white", px: 3, py: 0.5, borderRadius: "6px", display: "inline-block", fontWeight: "bold", letterSpacing: "0.5px", boxShadow: "0 2px 6px rgba(25, 118, 210, 0.3)" }}>
-                  Billing Details
-                </Box>
-              </Divider>
-              
-<Box
-  sx={{
-    opacity: formValues.isFixed === "Yes" ? 0.5 : 1,
-    pointerEvents: formValues.isFixed === "Yes" ? "none" : "auto",
-  }}
->
-              {/* Billing */}
-              <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "nowrap", width: "100%", overflowX: "auto", borderBottom: "1px solid #ddd", paddingBottom: "10px" }}>
-                <Typography variant="subtitle2" sx={{ minWidth: 120, fontWeight: 600, color: "#1976d2" }}>
-                  Billing Info:
-                </Typography>
+{formValues.isFixed !== "Yes" && (
+  <>
+    {/* Billing */}
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "1rem",
+        flexWrap: "nowrap",
+        width: "100%",
+        overflowX: "auto",
+        borderBottom: "1px solid #ddd",
+        paddingBottom: "10px",
+      }}
+    >
+      <Typography
+        variant="subtitle2"
+        sx={{ minWidth: 120, fontWeight: 600, color: "#1976d2" }}
+      >
+        Billing Info:
+      </Typography>
 
-                <TextField select label="Billing Type" disabled={formValues.isFixed === "Yes"}
+      <TextField
+        select
+        label="Billing Type"
+        name="billingType"
+        value={formValues.billingType || ""}
+        onChange={(e) =>
+          handleEditChange("billingType", e.target.value)
+        }
+        sx={{ minWidth: 160 }}
+        margin="normal"
+      >
+        <MenuItem value="Hour">Hour</MenuItem>
+        <MenuItem value="Day">Day</MenuItem>
+        <MenuItem value="Month">Month</MenuItem>
+      </TextField>
 
-name="billingType" value={formValues.billingType || ""} onChange={(e) => handleEditChange("billingType", e.target.value)} sx={{ minWidth: 160 }} margin="normal">
-                  <MenuItem value="Hour">Hour</MenuItem>
-                  <MenuItem value="Day">Day</MenuItem>
-                  <MenuItem value="Month">Month</MenuItem>
-                </TextField>
+      <TextField
+        label="Bill Rate"
+        type="number"
+        value={formValues.billRate || ""}
+        onChange={(e) =>
+          handleEditChange("billRate", e.target.value)
+        }
+      />
 
-                <TextField
-  label="Bill Rate"
-  type="number"
-  value={formValues.billRate || ""}
-  disabled={formValues.isFixed === "Yes"}
-  onChange={(e) => handleEditChange("billRate", e.target.value)}
-/>
-              <TextField label="Monthly Billing" name="monthlyBilling" type="number" value={formValues.monthlyBilling || ""} InputProps={{ readOnly: true }} sx={{ minWidth: 160 }} margin="normal" />
+      <TextField
+        label="Monthly Billing"
+        name="monthlyBilling"
+        type="number"
+        value={formValues.monthlyBilling || ""}
+        InputProps={{ readOnly: true }}
+        sx={{ minWidth: 160 }}
+        margin="normal"
+      />
 
-                <TextField select label="Invoice Cycle" name="invoiceCycle" value={formValues.invoiceCycle || ""} onChange={(e) => handleEditChange("invoiceCycle", e.target.value)} sx={{ minWidth: 160 }} margin="normal">
-                  <MenuItem value="Monthly">Monthly</MenuItem>
-                  <MenuItem value="Quarterly">Quarterly</MenuItem>
-                </TextField>
-              </div>
-</Box>
-              {/* Tax & Time */}
-              <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap", width: "100%", overflowX: "auto", marginTop: "1rem" }}>
-                <Typography variant="subtitle2" sx={{ minWidth: 120, fontWeight: 600, color: "#1976d2" }}>
-                  Tax & Time Info:
-                </Typography>
+      <TextField
+        select
+        label="Invoice Cycle"
+        name="invoiceCycle"
+        value={formValues.invoiceCycle || ""}
+        onChange={(e) =>
+          handleEditChange("invoiceCycle", e.target.value)
+        }
+        sx={{ minWidth: 160 }}
+        margin="normal"
+      >
+        <MenuItem value="Monthly">Monthly</MenuItem>
+        <MenuItem value="Quarterly">Quarterly</MenuItem>
+      </TextField>
+    </div>
 
-                {(formValues.billingType === "Hour" || formValues.billingType === "Day") && (
-                  <TextField label={formValues.billingType === "Hour" ? "Total Hours" : "Total Days"} name="hoursOrDays" type="number" value={formValues.hoursOrDays || ""} onChange={(e) => handleEditChange("hoursOrDays", e.target.value)} sx={{ width: 100 }} margin="normal" />
-                )}
+    {/* Tax & Time */}
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "1rem",
+        flexWrap: "wrap",
+        width: "100%",
+        overflowX: "auto",
+        marginTop: "1rem",
+      }}
+    >
+      <Typography
+        variant="subtitle2"
+        sx={{ minWidth: 120, fontWeight: 600, color: "#1976d2" }}
+      >
+        Tax & Time Info:
+      </Typography>
 
-                {formValues.monthlyBilling > 0 && (
-                  <TextField label="GST (%)" name="gst" type="number" value={formValues.gst || ""} onChange={(e) => {
-                    const gst = parseFloat(e.target.value) || 0;
-                    const gstAmount = (formValues.monthlyBilling * gst) / 100;
-                    const tdsAmount = (formValues.monthlyBilling * (formValues.tds || 0)) / 100;
-                    setFormValues({ ...formValues, gst, gstAmount, netPayable: formValues.monthlyBilling + gstAmount - tdsAmount });
-                    setIsDirty(true);
-                  }} sx={{ width: 130 }} margin="normal" disabled={(formValues.billingType === "Hour" && !formValues.hoursOrDays) || (formValues.billingType === "Day" && !formValues.hoursOrDays)} />
-                )}
+      {(formValues.billingType === "Hour" ||
+        formValues.billingType === "Day") && (
+        <TextField
+          label={
+            formValues.billingType === "Hour"
+              ? "Total Hours"
+              : "Total Days"
+          }
+          name="hoursOrDays"
+          type="number"
+          value={formValues.hoursOrDays || ""}
+          onChange={(e) =>
+            handleEditChange("hoursOrDays", e.target.value)
+          }
+          sx={{ width: 100 }}
+          margin="normal"
+        />
+      )}
 
-                {formValues.monthlyBilling > 0 && (
-                  <TextField label="TDS (%)" name="tds" type="number" value={formValues.tds || ""} onChange={(e) => {
-                    const tds = parseFloat(e.target.value) || 0;
-                    const gstAmount = (formValues.monthlyBilling * (formValues.gst || 0)) / 100;
-                    const tdsAmount = (formValues.monthlyBilling * tds) / 100;
-                    setFormValues({ ...formValues, tds, tdsAmount, netPayable: formValues.monthlyBilling + gstAmount - tdsAmount });
-                    setIsDirty(true);
-                  }} sx={{ width: 130 }} margin="normal" disabled={(formValues.billingType === "Hour" && !formValues.hoursOrDays) || (formValues.billingType === "Day" && !formValues.hoursOrDays)} />
-                )}
+      {formValues.monthlyBilling > 0 && (
+        <TextField
+          label="GST (%)"
+          name="gst"
+          type="number"
+          value={formValues.gst || ""}
+          onChange={(e) => {
+            const gst = parseFloat(e.target.value) || 0;
+            const gstAmount =
+              (formValues.monthlyBilling * gst) / 100;
+            const tdsAmount =
+              (formValues.monthlyBilling *
+                (formValues.tds || 0)) /
+              100;
+            setFormValues({
+              ...formValues,
+              gst,
+              gstAmount,
+              netPayable:
+                formValues.monthlyBilling +
+                gstAmount -
+                tdsAmount,
+            });
+            setIsDirty(true);
+          }}
+          sx={{ width: 130 }}
+          margin="normal"
+        />
+      )}
 
-                {(formValues.gst || formValues.tds) && (
-                  <TextField label="Net Payable" name="netPayable" type="number" value={formValues.netPayable || ""} InputProps={{ readOnly: true }} sx={{ minWidth: 200, backgroundColor: "#f1f8e9", fontWeight: "bold" }} margin="normal" />
-                )}
-              </div>
+      {formValues.monthlyBilling > 0 && (
+        <TextField
+          label="TDS (%)"
+          name="tds"
+          type="number"
+          value={formValues.tds || ""}
+          onChange={(e) => {
+            const tds = parseFloat(e.target.value) || 0;
+            const gstAmount =
+              (formValues.monthlyBilling *
+                (formValues.gst || 0)) /
+              100;
+            const tdsAmount =
+              (formValues.monthlyBilling * tds) / 100;
+            setFormValues({
+              ...formValues,
+              tds,
+              tdsAmount,
+              netPayable:
+                formValues.monthlyBilling +
+                gstAmount -
+                tdsAmount,
+            });
+            setIsDirty(true);
+          }}
+          sx={{ width: 130 }}
+          margin="normal"
+        />
+      )}
+
+      {(formValues.gst || formValues.tds) && (
+        <TextField
+          label="Net Payable"
+          name="netPayable"
+          type="number"
+          value={formValues.netPayable || ""}
+          InputProps={{ readOnly: true }}
+          sx={{
+            minWidth: 200,
+            backgroundColor: "#f1f8e9",
+            fontWeight: "bold",
+          }}
+          margin="normal"
+        />
+      )}
+    </div>
+  </>
+)}
 
               <Divider textAlign="center" sx={{ marginY: 2, "&::before, &::after": { borderColor: "#50a7ffff", borderWidth: "2px", color: "darkblue", fontSize: "20px", fontWeight: "bold" } }}>
                 <Box sx={{ backgroundColor: "#1976d2", color: "white", px: 3, py: 0.5, borderRadius: "6px", display: "inline-block", fontWeight: "bold", letterSpacing: "0.5px", boxShadow: "0 2px 6px rgba(25, 118, 210, 0.3)" }}>
@@ -1394,6 +1450,7 @@ name="billingType" value={formValues.billingType || ""} onChange={(e) => handleE
                   </div>
                 )}
               </div>
+              
             </>
           )}
         </DialogContent>
@@ -1543,102 +1600,13 @@ name="billingType" value={formValues.billingType || ""} onChange={(e) => handleE
       + Add Milestone
     </Button>
   </>
-)}          <div style={{ display: "flex", gap: "1rem" }}>
+)}         
+{/* Project Type */}
+
+
+ <div style={{ display: "flex", gap: "1rem" }}>
             <TextField label="Project Description" name="projectDescription" multiline rows={2} value={newProject.projectDescription} onChange={handleChange} fullWidth margin="normal" />
           </div>
-{/* 🔹 MILESTONES SECTION */}
-{currentProject.isFixed === "Yes" && (
-  <>
-    <Divider
-      textAlign="center"
-      sx={{
-        my: 3,
-        "&::before, &::after": { borderColor: "#50a7ffff", borderWidth: 2 },
-      }}
-    >
-      <Box
-        sx={{
-          backgroundColor: "#1976d2",
-          color: "white",
-          px: 3,
-          py: 0.5,
-          borderRadius: "6px",
-          fontWeight: "bold",
-        }}
-      >
-        Milestones
-      </Box>
-    </Divider>
-
-    {currentProject.milestones.map((m, index) => (
-      <Box
-        key={index}
-        sx={{
-          display: "grid",
-          gridTemplateColumns: "2.5fr 1fr 1fr 1fr 1.2fr 1.5fr",
-          gap: 2,
-          mb: 2,
-        }}
-      >
-        <TextField
-          label="Milestone"
-          value={m.name}
-          onChange={(e) => updateMilestone(index, "name", e.target.value)}
-          InputProps={{ readOnly: !isEditing }}
-        />
-
-        <TextField
-          label="Base"
-          type="number"
-          value={m.baseValue}
-          onChange={(e) => updateMilestone(index, "baseValue", e.target.value)}
-          InputProps={{ readOnly: !isEditing }}
-        />
-
-        <TextField
-          label="GST %"
-          type="number"
-          value={m.gstPercent}
-          onChange={(e) => updateMilestone(index, "gstPercent", e.target.value)}
-          InputProps={{ readOnly: !isEditing }}
-        />
-
-        <TextField
-          label="TDS %"
-          type="number"
-          value={m.tdsPercent}
-          onChange={(e) => updateMilestone(index, "tdsPercent", e.target.value)}
-          InputProps={{ readOnly: !isEditing }}
-        />
-
-        <TextField
-          label="Net"
-          value={m.netPayable}
-          InputProps={{ readOnly: true }}
-          sx={{ backgroundColor: "#e8f5e9" }}
-        />
-
-        <TextField
-          label="Invoice Month"
-          type="month"
-          value={m.invoiceMonth}
-          onChange={(e) =>
-            updateMilestone(index, "invoiceMonth", e.target.value)
-          }
-          InputProps={{ readOnly: !isEditing }}
-        />
-      </Box>
-    ))}
-
-    {isEditing && (
-      <Box sx={{ mt: 2 }}>
-        <Button variant="outlined" onClick={addMilestone}>
-          + Add Milestone
-        </Button>
-      </Box>
-    )}
-  </>
-)}
 
 
           <Divider textAlign="center" sx={{ marginY: 2, "&::before, &::after": { borderColor: "#50a7ffff", borderWidth: "2px", color: "darkblue", fontSize: "20px", fontWeight: "bold" } }}>
@@ -1653,60 +1621,216 @@ name="billingType" value={formValues.billingType || ""} onChange={(e) => handleE
             <TextField label="Mobile No" name="mobileNo" type="text" value={newProject.mobileNo} onChange={handleChange} fullWidth margin="normal" />
           </div>
 
-          <Divider textAlign="center" sx={{ marginY: 2, "&::before, &::after": { borderColor: "#50a7ffff", borderWidth: "2px", color: "darkblue", fontSize: "20px", fontWeight: "bold" } }}>
-            <Box sx={{ backgroundColor: "#1976d2", color: "white", px: 3, py: 0.5, borderRadius: "6px", display: "inline-block", fontWeight: "bold", letterSpacing: "0.5px", boxShadow: "0 2px 6px rgba(25, 118, 210, 0.3)" }}>
-              Billing Details
-            </Box>
-          </Divider>
+{newProject.isFixed !== "Yes" && (
+  <>
+    <Divider
+      textAlign="center"
+      sx={{
+        marginY: 2,
+        "&::before, &::after": {
+          borderColor: "#50a7ffff",
+          borderWidth: "2px",
+          color: "darkblue",
+          fontSize: "20px",
+          fontWeight: "bold",
+        },
+      }}
+    >
+      <Box
+        sx={{
+          backgroundColor: "#1976d2",
+          color: "white",
+          px: 3,
+          py: 0.5,
+          borderRadius: "6px",
+          display: "inline-block",
+          fontWeight: "bold",
+          letterSpacing: "0.5px",
+          boxShadow: "0 2px 6px rgba(25, 118, 210, 0.3)",
+        }}
+      >
+        Billing Details
+      </Box>
+    </Divider>
 
-          <Box sx={{ display: "flex", flexWrap: "nowrap", alignItems: "center", gap: 2, mt: 2, pb: 1, borderBottom: "1px solid #ddd" }}>
-            <Typography variant="subtitle2" sx={{ minWidth: 120, fontWeight: 600, color: "#1976d2" }}>Billing Details:</Typography>
+    <Box
+      sx={{
+        display: "flex",
+        flexWrap: "nowrap",
+        alignItems: "center",
+        gap: 2,
+        mt: 2,
+        pb: 1,
+        borderBottom: "1px solid #ddd",
+      }}
+    >
+      <Typography
+        variant="subtitle2"
+        sx={{ minWidth: 120, fontWeight: 600, color: "#1976d2" }}
+      >
+        Billing Details:
+      </Typography>
 
-            <TextField select label="Billing Type" name="billingType" value={newProject.billingType} onChange={handleChange} sx={{ minWidth: 180 }} margin="normal">
-              <MenuItem value="Hour">Hourly</MenuItem>
-              <MenuItem value="Day">Day</MenuItem>
-              <MenuItem value="Month">Monthly</MenuItem>
-            </TextField>
+      <TextField
+        select
+        label="Billing Type"
+        name="billingType"
+        value={newProject.billingType}
+        onChange={handleChange}
+        sx={{ minWidth: 180 }}
+        margin="normal"
+      >
+        <MenuItem value="Hour">Hourly</MenuItem>
+        <MenuItem value="Day">Day</MenuItem>
+        <MenuItem value="Month">Monthly</MenuItem>
+      </TextField>
 
-            <TextField label="Bill Rate" name="billRate" type="number" value={newProject.billRate} onChange={handleChange} sx={{ minWidth: 120 }} margin="normal" />
+      <TextField
+        label="Bill Rate"
+        name="billRate"
+        type="number"
+        value={newProject.billRate}
+        onChange={handleChange}
+        sx={{ minWidth: 120 }}
+        margin="normal"
+      />
 
-            <TextField label="Monthly Billing" name="monthlyBilling" type="number" value={newProject.monthlyBilling || ""} onChange={handleChange} sx={{ minWidth: 180 }} margin="normal" />
+      <TextField
+        label="Monthly Billing"
+        name="monthlyBilling"
+        type="number"
+        value={newProject.monthlyBilling || ""}
+        onChange={handleChange}
+        sx={{ minWidth: 180 }}
+        margin="normal"
+      />
 
-            <TextField select label="Invoice Cycle" name="invoiceCycle" value={newProject.invoiceCycle || ""} onChange={(e) => setNewProject({ ...newProject, invoiceCycle: e.target.value })} sx={{ minWidth: 180 }} margin="normal">
-              <MenuItem value="Monthly">Monthly</MenuItem>
-              <MenuItem value="Quarterly">Quarterly</MenuItem>
-            </TextField>
-          </Box>
+      <TextField
+        select
+        label="Invoice Cycle"
+        name="invoiceCycle"
+        value={newProject.invoiceCycle || ""}
+        onChange={(e) =>
+          setNewProject({ ...newProject, invoiceCycle: e.target.value })
+        }
+        sx={{ minWidth: 180 }}
+        margin="normal"
+      >
+        <MenuItem value="Monthly">Monthly</MenuItem>
+        <MenuItem value="Quarterly">Quarterly</MenuItem>
+      </TextField>
+    </Box>
 
-          <Box sx={{ display: "flex", alignItems: "center", gap: 2, mt: 2, flexWrap: "wrap" }}>
-            <Typography variant="subtitle2" sx={{ minWidth: 120, fontWeight: 600, color: "#1976d2" }}>Tax & Time Info:</Typography>
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        gap: 2,
+        mt: 2,
+        flexWrap: "wrap",
+      }}
+    >
+      <Typography
+        variant="subtitle2"
+        sx={{ minWidth: 120, fontWeight: 600, color: "#1976d2" }}
+      >
+        Tax & Time Info:
+      </Typography>
 
-            {(newProject.billingType === "Hour" || newProject.billingType === "Day") && (
-              <TextField label={newProject.billingType === "Hour" ? "Total Hours" : "Total Days"} name="hoursOrDays" type="number" value={newProject.hoursOrDays || ""} onChange={handleChange} sx={{ width: 130 }} margin="normal" />
-            )}
+      {(newProject.billingType === "Hour" ||
+        newProject.billingType === "Day") && (
+        <TextField
+          label={
+            newProject.billingType === "Hour"
+              ? "Total Hours"
+              : "Total Days"
+          }
+          name="hoursOrDays"
+          type="number"
+          value={newProject.hoursOrDays || ""}
+          onChange={handleChange}
+          sx={{ width: 130 }}
+          margin="normal"
+        />
+      )}
 
-            {newProject.monthlyBilling > 0 && (
-              <TextField label="GST (%)" name="gst" type="number" value={newProject.gst || ""} onChange={(e) => {
-                const gst = parseFloat(e.target.value) || 0;
-                const gstAmount = (newProject.monthlyBilling * gst) / 100;
-                const tdsAmount = (newProject.monthlyBilling * (newProject.tds || 0)) / 100;
-                setNewProject({ ...newProject, gst, gstAmount, netPayable: newProject.monthlyBilling + gstAmount - tdsAmount });
-              }} sx={{ width: 130 }} margin="normal" disabled={(newProject.billingType === "Hour" && !newProject.hoursOrDays) || (newProject.billingType === "Day" && !newProject.hoursOrDays)} />
-            )}
+      {newProject.monthlyBilling > 0 && (
+        <TextField
+          label="GST (%)"
+          name="gst"
+          type="number"
+          value={newProject.gst || ""}
+          onChange={(e) => {
+            const gst = parseFloat(e.target.value) || 0;
+            const gstAmount =
+              (newProject.monthlyBilling * gst) / 100;
+            const tdsAmount =
+              (newProject.monthlyBilling *
+                (newProject.tds || 0)) /
+              100;
+            setNewProject({
+              ...newProject,
+              gst,
+              gstAmount,
+              netPayable:
+                newProject.monthlyBilling +
+                gstAmount -
+                tdsAmount,
+            });
+          }}
+          sx={{ width: 130 }}
+          margin="normal"
+        />
+      )}
 
-            {newProject.monthlyBilling > 0 && (
-              <TextField label="TDS (%)" name="tds" type="number" value={newProject.tds || ""} onChange={(e) => {
-                const tds = parseFloat(e.target.value) || 0;
-                const gstAmount = (newProject.monthlyBilling * (newProject.gst || 0)) / 100;
-                const tdsAmount = (newProject.monthlyBilling * tds) / 100;
-                setNewProject({ ...newProject, tds, tdsAmount, netPayable: newProject.monthlyBilling + gstAmount - tdsAmount });
-              }} sx={{ width: 130 }} margin="normal" disabled={(newProject.billingType === "Hour" && !newProject.hoursOrDays) || (newProject.billingType === "Day" && !newProject.hoursOrDays)} />
-            )}
+      {newProject.monthlyBilling > 0 && (
+        <TextField
+          label="TDS (%)"
+          name="tds"
+          type="number"
+          value={newProject.tds || ""}
+          onChange={(e) => {
+            const tds = parseFloat(e.target.value) || 0;
+            const gstAmount =
+              (newProject.monthlyBilling *
+                (newProject.gst || 0)) /
+              100;
+            const tdsAmount =
+              (newProject.monthlyBilling * tds) / 100;
+            setNewProject({
+              ...newProject,
+              tds,
+              tdsAmount,
+              netPayable:
+                newProject.monthlyBilling +
+                gstAmount -
+                tdsAmount,
+            });
+          }}
+          sx={{ width: 130 }}
+          margin="normal"
+        />
+      )}
 
-            {(newProject.gst || newProject.tds) && (
-              <TextField label="Net Payable" name="netPayable" type="number" value={newProject.netPayable || ""} InputProps={{ readOnly: true }} sx={{ minWidth: 200, backgroundColor: "#f1f8e9", fontWeight: "bold" }} margin="normal" />
-            )}
-          </Box>
+      {(newProject.gst || newProject.tds) && (
+        <TextField
+          label="Net Payable"
+          name="netPayable"
+          type="number"
+          value={newProject.netPayable || ""}
+          InputProps={{ readOnly: true }}
+          sx={{
+            minWidth: 200,
+            backgroundColor: "#f1f8e9",
+            fontWeight: "bold",
+          }}
+          margin="normal"
+        />
+      )}
+    </Box>
+  </>
+)}
+
 
           <Divider textAlign="center" sx={{ marginY: 2, "&::before, &::after": { borderColor: "#50a7ffff", borderWidth: "2px", color: "darkblue", fontSize: "20px", fontWeight: "bold" } }}>
             <Box sx={{ backgroundColor: "#1976d2", color: "white", px: 3, py: 0.5, borderRadius: "6px", display: "inline-block", fontWeight: "bold", letterSpacing: "0.5px", boxShadow: "0 2px 6px rgba(25, 118, 210, 0.3)" }}>

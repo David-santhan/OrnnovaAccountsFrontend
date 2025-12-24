@@ -57,20 +57,23 @@ const [invoiceSearch, setInvoiceSearch] = useState("");
 const [searchText, setSearchText] = useState("");
 
 
-const generateInvoiceNumber = (clientName, invoiceDate = new Date()) => {
-  if (!clientName) return "";
+const generateInvoiceNumber = (
+  projectID,
+  invoiceDate = new Date(),
+  milestoneIndex = null
+) => {
+  if (!projectID) return "";
 
   const prefix = "INV";
-  const clientCode = clientName
-    .replace(/\s+/g, "")   // remove spaces
-    .substring(0, 3)
-    .toUpperCase();
-
   const d = new Date(invoiceDate);
-  const month = String(d.getMonth() + 1).padStart(2, "0");
   const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
 
-  return `${prefix}${clientCode}${month}${year}`;
+  if (milestoneIndex !== null) {
+    return `${prefix}-${projectID}-MS${milestoneIndex}-${year}${month}`;
+  }
+
+  return `${prefix}-${projectID}-${year}${month}`;
 };
 
 
@@ -1111,131 +1114,6 @@ useEffect(() => {
                     ? new Intl.DateTimeFormat("en-GB").format(new Date(proj.invoice_date))
                     : "-"}
                 </TableCell>
-               {/* <TableCell>
-  {proj.invoice_date ? (
-    // ✅ Already raised
-    <Button
-      variant="outlined"
-      size="small"
-      onClick={() => {
-        setSelectedInvoice(proj);
-        setOpenPreview(true);
-      }}
-    >
-      View
-    </Button>
-  ) : (
-    (() => {
-      // ✅ Use the selected month from your filter
-    const { canRaise, nextRaiseDate } = getRaiseEligibilityForMonth(
-  proj,
-  toYearMonth(filterMonthYear || proj.startDate)
-);
-
-// const selectedMonthForInvoice =
-//   filterMonthYear || new Date().toISOString().slice(0, 7);
-const selectedMonthForInvoice = toYearMonth(
-  filterMonthYear || proj.startDate
-);
-const fixedCalc =
-  proj.isFixed === "Yes"
-    ? applyFixedProjectMilestone(proj, selectedMonthForInvoice)
-    : null;
-
-if (proj.isFixed === "Yes" && !fixedCalc) {
-  return (
-    <Button variant="outlined" size="small" disabled>
-      No milestone for {selectedMonthForInvoice}
-    </Button>
-  );
-}
-
-if (canRaise) {
-  return (
-    <Button
-      variant="contained"
-      color="secondary"
-      size="small"
-      onClick={() => {
-
-        // ✅ SAFE CLIENT (NO LOGIC CHANGE)
-        const safeClient = client || {
-          id: proj.clientID,
-          clientName: proj.clientName,
-          paymentTerms: proj.paymentTerms || 0,
-        };
-
-        // 1️⃣ Set selected project & client
-        setSelectedProject(proj);
-        setSelectedClient(safeClient);
-
-        // 2️⃣ Generate invoice number
-        const now = new Date();
-        const month = String(now.getMonth() + 1).padStart(2, "0");
-        const year = now.getFullYear();
-
-       const invoiceNumber = generateInvoiceNumber(
-  safeClient.clientName,
-  new Date()
-);
-
-
-        // 3️⃣ Fixed milestone (UNCHANGED)
-        const selectedMonthForInvoice =
-          filterMonthYear || new Date().toISOString().slice(0, 7);
-
-        const fixedCalc =
-          proj.isFixed === "Yes"
-            ? applyFixedProjectMilestone(proj, selectedMonthForInvoice)
-            : null;
-
-        // 4️⃣ ALWAYS CALCULATE FROM PROJECT
-        let calc;
-
-        if (fixedCalc) {
-          calc = fixedCalc;
-        } else {
-          calc = calculateInvoiceValue(
-            proj.invoiceCycle || "Monthly",
-            0,
-            proj
-          );
-        }
-
-        setCalculatedValues(calc);
-
-        // 5️⃣ Set invoice (ONLY invoice_cycle FIXED)
-        setNewInvoice({
-          ...initialInvoiceState,
-          invoice_number: invoiceNumber,
-          invoice_date: new Date().toISOString().split("T")[0],
-          client_name: safeClient.clientName,
-          project_id: proj.projectID,
-
-          // ✅ FIX: NEVER "Milestone"
-          invoice_cycle: proj.invoiceCycle || "Monthly",
-
-          base_value: calc.base_value,
-          gst_amount: calc.gst_amount,
-          tds_amount: calc.tds_amount,
-          invoice_value: calc.invoice_value,
-
-          received: "No",
-        });
-
-        // 6️⃣ Open dialog
-        setIsRaised(true);
-        setOpenDialog(true);
-      }}
-    >
-      Raise
-    </Button>
-  );
-}
-    })()
-  )}
-</TableCell> */}
-
 <TableCell>
   {proj.invoice_date ? (
     // ✅ Already raised

@@ -252,8 +252,6 @@ const [selectedMonthYearInput, setSelectedMonthYearInput] = useState("");
       : exp
   )
 );
-
-
     // Close modal
     setOpenPayDialog(false);
     setPayExpense(null);
@@ -336,39 +334,6 @@ const handleApplyFilterWithData = (data, monthParam) => {
   );
   setTotalExpense(total);
 };
-
-
-// const handleApplyFilterWithData = (data, monthParam) => {
-//   let filtered = data || [];
-//   const monthToUse = monthParam || selectedMonthYear;
-
-//   // Regular
-//   if (filterRegular !== "all") {
-//     filtered = filtered.filter((exp) => exp.regular === filterRegular);
-//   }
-
-//   // Type
-//   if (filterType !== "all") {
-//     filtered = filtered.filter((exp) => exp.type === filterType);
-//   }
-
-//   // ✅ FIXED Month filter
-//   if (monthToUse) {
-//     filtered = filtered.filter((exp) => {
-//       if (exp.paymentstatus === "Paid" && exp.paid_date) {
-//         return exp.paid_date.slice(0, 7) === monthToUse;
-//       }
-//       return exp.raised_date?.slice(0, 7) === monthToUse;
-//     });
-//   }
-
-//   setFilteredExpenses(filtered);
-//   setMonthYear(monthToUse);
-
-//   const total = filtered.reduce((sum, exp) => sum + (exp.amount || 0), 0);
-//   setTotalExpense(total);
-// };
-
   const handleSaveChanges = async () => {
     try {
       const numericId = Number(selectedExpense.id.replace("E", ""));
@@ -517,35 +482,6 @@ const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
   }}
   style={{ minWidth: "150px" }}
 />
-
-{/* 
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <InputLabel>Status</InputLabel>
-            <Select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} label="Status">
-              <MenuItem value="all">All</MenuItem>
-              <MenuItem value="Raised">Raised</MenuItem>
-              <MenuItem value="Pending">Pending</MenuItem>
-              <MenuItem value="Paid">Paid</MenuItem>
-              <MenuItem value="Hold">Hold</MenuItem>
-              <MenuItem value="Rejected">Rejected</MenuItem>
-            </Select>
-          </FormControl> */}
-
-          {/* <Button
-  variant="outlined"
-  color="warning"
-  onClick={async () => {
-    setSelectedMonthYear(selectedMonthYearInput); // apply selected month
-    
-    const refreshed = await fetchExpenses(selectedMonthYearInput); // fetch fresh data
-    
-    handleApplyFilterWithData(refreshed); // apply filters correctly
-  }}
->
-  Search
-</Button> */}
-
-
 <Button
   variant="outlined"
   color="warning"
