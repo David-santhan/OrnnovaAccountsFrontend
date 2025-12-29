@@ -27,6 +27,8 @@ function Employees() {
   const [alertOpen, setAlertOpen] = useState(false); // Snackbar control
   const [alertMessage, setAlertMessage] = useState("");
   const [alertSeverity, setAlertSeverity] = useState("success");
+  const [excelFile, setExcelFile] = useState(null);
+
 
   const [newEmployee, setNewEmployee] = useState({
     employee_id: "",
@@ -151,21 +153,64 @@ setSearchName("");  // also clear the search box
     sessionStorage.setItem("employeesLoaded", JSON.stringify(filtered));
     setLoaded(true); // optional but keeps UI consistent (so table shows)
   };
-
-const handleRowClick = (emp) => {
-  if (loaded) {
-    // MODE: loaded → open modal empty
-    setSelectedEmp(null);   // ensure selectedEmp is cleared
-    setFormData({});        // ensure formData is cleared (prevents stale display)
-    setIsEditing(false);
-    setOpenEmployee(true);
-  } else {
-    // MODE: not-loaded (search-before-load) → open modal with clicked emp details
-    setSelectedEmp(emp);
-    setFormData(emp);       // set immediately so modal shows data
-    setIsEditing(false);
-    setOpenEmployee(true);
+  const handleExcelUpload = async () => {
+  if (!excelFile) {
+    setAlertMessage("Please select an Excel file");
+    setAlertSeverity("error");
+    setAlertOpen(true);
+    return;
   }
+
+  try {
+    const formData = new FormData();
+    formData.append("file", excelFile);
+
+    await axios.post(
+      "http://localhost:7760/upload-employees-excel",
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } }
+    );
+
+    // refresh data
+    const refreshed = await axios.get("http://localhost:7760/getemployees");
+    setAllEmployees(refreshed.data || []);
+    setEmployees(refreshed.data || []);
+    setLoaded(true);
+
+    setExcelFile(null);
+
+    setAlertMessage("Employees imported successfully");
+    setAlertSeverity("success");
+    setAlertOpen(true);
+  } catch (err) {
+    console.error(err);
+    setAlertMessage("Excel upload failed");
+    setAlertSeverity("error");
+    setAlertOpen(true);
+  }
+};
+
+
+// const handleRowClick = (emp) => {
+//   if (loaded) {
+//     // MODE: loaded → open modal empty
+//     setSelectedEmp(null);   // ensure selectedEmp is cleared
+//     setFormData({});        // ensure formData is cleared (prevents stale display)
+//     setIsEditing(false);
+//     setOpenEmployee(true);
+//   } else {
+//     // MODE: not-loaded (search-before-load) → open modal with clicked emp details
+//     setSelectedEmp(emp);
+//     setFormData(emp);       // set immediately so modal shows data
+//     setIsEditing(false);
+//     setOpenEmployee(true);
+//   }
+// };
+const handleRowClick = (emp) => {
+  setSelectedEmp(emp);     // ✅ always set selected employee
+  setFormData(emp);        // ✅ always populate form
+  setIsEditing(false);
+  setOpenEmployee(true);
 };
 
 
@@ -334,6 +379,30 @@ const handleRowClick = (emp) => {
             width: "98%",
           }}
         >
+        {/* Excel Upload */}
+<input
+  type="file"
+  accept=".xlsx,.xls"
+  style={{ display: "none" }}
+  id="excel-upload"
+  onChange={(e) => setExcelFile(e.target.files[0])}
+/>
+
+<label htmlFor="excel-upload">
+  <Button variant="outlined" component="span">
+    Select Excel
+  </Button>
+</label>
+
+<Button
+  variant="contained"
+  color="success"
+  onClick={handleExcelUpload}
+  disabled={!excelFile}
+>
+  Upload Excel
+</Button>
+
           <TextField
             label="Search by Name"
             value={searchName}

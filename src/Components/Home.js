@@ -91,6 +91,8 @@ function Home() {
   const [clientFormValues, setClientFormValues] = useState(null);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [clientToDelete, setClientToDelete] = useState(null);
+  const [clientExcelFile, setClientExcelFile] = useState(null);
+
 
   const [newClient, setNewClient] = useState({});
 
@@ -162,6 +164,25 @@ function Home() {
       setAdding(false);
     }
   };
+const handleClientExcelUpload = async () => {
+  if (!clientExcelFile) return;
+
+  try {
+    const fd = new FormData();
+    fd.append("file", clientExcelFile);
+
+    await axios.post("http://localhost:7760/upload-clients-excel", fd);
+
+    // refresh clients
+    await loadClients();
+
+    setClientExcelFile(null);
+    alert("Clients imported successfully");
+  } catch (err) {
+    console.error(err);
+    alert("Client Excel upload failed");
+  }
+};
 
   const handleDelete = async () => {
     try {
@@ -267,62 +288,88 @@ function Home() {
             </Divider>
 
             {/* Search Bar */}
-            <Box
-              sx={{
-                width: "50%",
-                margin: "auto",
-                display: "flex",
-                gap: 1,
-                justifyContent: "center",
-                alignItems: "center", // important to align vertically
-              }}
-            >
-              <TextField
-                label="Search by Client Name"
-                variant="outlined"
-                fullWidth
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-              />
+            {/* Search Bar + Excel Upload */}
+<Box
+  sx={{
+    width: "100%",
+    display: "flex",
+    gap: 1.2,
+    justifyContent: "center",
+    alignItems: "center",
+    flexWrap: "wrap",
+  }}
+>
+  {/* Excel Upload */}
+  <input
+    type="file"
+    accept=".xlsx,.xls"
+    style={{ display: "none" }}
+    id="client-excel-upload"
+    onChange={(e) => setClientExcelFile(e.target.files[0])}
+  />
 
-              <Button
-                variant="contained"
-                color={searchInput ? "success" : "primary"}
-                onClick={async () => {
-                  // Always fetch latest clients first
-                  await loadClients();
+  <label htmlFor="client-excel-upload">
+    <Button
+      variant="outlined"
+      size="small"
+      sx={{ height: 36 }}
+      component="span"
+    >
+      Select Excel
+    </Button>
+  </label>
 
-                  if (searchInput && searchInput.trim() !== "") {
-                    // apply search term so filteredClients displays
-                    setSearchTerm(searchInput.trim());
-                  } else {
-                    // no search -> show all
-                    setSearchTerm("");
-                  }
-                }}
-                sx={{
-                  borderRadius: searchInput ? "50%" : 1,
-                  minWidth: 0,
-                  width: searchInput ? 52 : "auto",
-                  height: searchInput ? 47 : "auto",
-                  px: searchInput ? 0 : 4,
-                  py: searchInput ? 0 : 1,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontWeight: searchInput ? "normal" : "bold",
-                  backgroundColor: searchInput ? undefined : "rgba(106, 106, 232, 1)",
-                }}
-              >
-                {searchInput ? <SearchIcon /> : "Load"}
-              </Button>
+  <Button
+    variant="contained"
+    color="success"
+    size="small"
+    sx={{ height: 36 }}
+    onClick={handleClientExcelUpload}
+    disabled={!clientExcelFile}
+  >
+    Upload
+  </Button>
 
-              {/* Smaller Total Clients text */}
-              <Typography variant="body2" sx={{ fontWeight: "bold", ml: 1, whiteSpace: "nowrap" }}>
-                Total Number of Clients: {clients.length}
-              </Typography>
-            </Box>
-          </Box>
+  {/* Search */}
+  <TextField
+    label="Search Client"
+    variant="outlined"
+    size="small"
+    sx={{ width: 220 }}
+    value={searchInput}
+    onChange={(e) => setSearchInput(e.target.value)}
+  />
+
+  <Button
+    variant="contained"
+    size="small"
+    onClick={async () => {
+      await loadClients();
+      setSearchTerm(searchInput.trim());
+    }}
+    sx={{
+      height: 36,
+      px: 3,
+      fontWeight: "bold",
+      backgroundColor: "rgba(106, 106, 232, 1)",
+    }}
+  >
+    Load
+  </Button>
+
+  {/* Count */}
+  <Typography
+    variant="body2"
+    sx={{
+      fontWeight: "bold",
+      ml: 1,
+      whiteSpace: "nowrap",
+    }}
+  >
+    Total Clients: {clients.length}
+  </Typography>
+</Box>
+</Box>
 
           {/* Table: Scrollable Body */}
           {clientsLoaded && clients.length > 0 && (
@@ -337,7 +384,7 @@ function Home() {
               <Table stickyHeader>
                 <TableHead>
                   <TableRow sx={{ backgroundColor: "whitesmoke" }}>
-                    {["ID", "Name", "SPOC", "Email", "Number", "Action"].map((header) => (
+                    {[ "Name", "SPOC", "Email", "Number", "Action"].map((header) => (
                       <TableCell key={header} sx={{ fontWeight: "bold" }}>
                         {header}
                       </TableCell>
@@ -348,7 +395,7 @@ function Home() {
                 <TableBody>
                   {filteredClients.map((client) => (
                     <TableRow key={client.id} hover onClick={() => handleRowClick(client)} sx={{ cursor: "pointer" }}>
-                      <TableCell>{client.id}</TableCell>
+                     
                       <TableCell>{client.clientName}</TableCell>
                       <TableCell>{client.contactSpoc}</TableCell>
                       <TableCell>{client.contactEmail}</TableCell>
