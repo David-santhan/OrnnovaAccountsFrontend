@@ -212,10 +212,6 @@ const handleRowClick = (emp) => {
   setIsEditing(false);
   setOpenEmployee(true);
 };
-
-
-
-
   const handleCloseModal = () => {
     setOpenEmployee(false);
     setSelectedEmp(null);
@@ -281,6 +277,7 @@ const handleRowClick = (emp) => {
       setAlertOpen(true);
     }
   };
+
 
   // Add employee
   const handleAddEmployee = async () => {
@@ -356,6 +353,8 @@ const handleRowClick = (emp) => {
       setAlertOpen(true);
     }
   };
+
+  
 
   // small helpers for counts
   const totalCount = allEmployees.length;

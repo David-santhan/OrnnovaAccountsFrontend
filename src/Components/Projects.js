@@ -930,7 +930,10 @@ const response = await fetch("http://localhost:7760/addproject", {
                       })()}
                     </TableCell>
 
-                    <TableCell>{p.billingType}</TableCell>
+                   <TableCell>
+  {p.isFixed === "Yes" ? "Fixed" : (p.billingType || "—")}
+</TableCell>
+
 
                     <TableCell>
                       {p.purchaseOrder ? (

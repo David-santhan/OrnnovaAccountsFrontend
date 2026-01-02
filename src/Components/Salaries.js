@@ -236,7 +236,7 @@ const [newSalary, setNewSalary] = useState({
   //   }
   // };
 
-// Submit form
+// // Submit form
 const monthlySalaryHandleSubmit = async () => {
   try {
     // ✅ Normalize numbers safely
@@ -295,6 +295,7 @@ const monthlySalaryHandleSubmit = async () => {
     );
   }
 };
+
 
 
 

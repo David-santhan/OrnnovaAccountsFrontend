@@ -185,21 +185,22 @@ export default function ForcastingDashboard() {
   const [fromMonth, setFromMonth] = useState("");
   const [toMonth, setToMonth] = useState("");
 
-  const fetchForecast = async () => {
-    try {
-      setLoading(true);
-      const res = await axios.get("http://localhost:7760/forecast");
-      const data = res.data || {};
-      setFullData(data || null);
-      // do NOT build summary/filter here; wait for user to click Search
-      console.log("forecast loaded (deferred processing)");
-    } catch (err) {
-      console.error("fetchForecast error", err);
-      setError("Failed to load forecast from server");
-    } finally {
-      setLoading(false);
-    }
-  };
+ const fetchForecast = async () => {
+  try {
+    setLoading(true);
+    const res = await axios.get("http://localhost:7760/forecast");
+    const data = res.data || {};
+    setFullData(data);     // keep state for later
+    return data;           // 🔑 RETURN DATA
+  } catch (err) {
+    console.error("fetchForecast error", err);
+    setError("Failed to load forecast from server");
+    return null;
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   // NOTE: intentionally do NOT auto-fetch on mount. User must pick range + click Search.
   // If you'd like to prefetch in background uncomment next line:
@@ -222,13 +223,21 @@ export default function ForcastingDashboard() {
 
     try {
       setLoading(true);
+let data = fullData;
 
-      // fetch forecast if not loaded already
-      if (!fullData) {
-        await fetchForecast();
-      }
+if (!data) {
+  data = await fetchForecast(); // ✅ get fresh data
+}
 
-      const months = fullData?.months || [];
+const months = data?.months || [];
+
+if (!Array.isArray(months) || months.length === 0) {
+  alert("No forecast data available from server.");
+  setSummary([]);
+  setFiltered([]);
+  return;
+}
+
       if (!Array.isArray(months) || months.length === 0) {
         alert("No forecast data available from server.");
         setSummary([]);
