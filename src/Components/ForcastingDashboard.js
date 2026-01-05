@@ -202,6 +202,7 @@ export default function ForcastingDashboard() {
 };
 
 
+
   // NOTE: intentionally do NOT auto-fetch on mount. User must pick range + click Search.
   // If you'd like to prefetch in background uncomment next line:
   // useEffect(() => { fetchForecast(); }, []);
@@ -282,6 +283,7 @@ if (!Array.isArray(months) || months.length === 0) {
     } finally {
       setLoading(false);
     }
+
   };
 
   // When dialog opens for a month, default the date range to that month's first->last day
@@ -296,6 +298,7 @@ if (!Array.isArray(months) || months.length === 0) {
       setRangeStart(null);
       setRangeEnd(null);
     }
+    
   }, [dialogOpen, selectedMonth]);
 
   // ---------- DEBUG: quick log to see month details when dialog opens ----------
@@ -415,58 +418,84 @@ if (!Array.isArray(months) || months.length === 0) {
 
     // 1) Add ALL forecast rows (no collapsing). If there's a matching actual by id -> merge paid info,
     // but only expose paid_amount/paid_date when the payment is actually paid.
-    forecast.forEach((f) => {
-      const fid = f.expense_id != null ? String(f.expense_id) : null;
+    // forecast.forEach((f) => {
+    //   const fid = f.expense_id != null ? String(f.expense_id) : null;
 
-      // try expense_id match
-      let match = fid ? actualById.get(fid) : undefined;
+    //   // try expense_id match
+    //   let match = fid ? actualById.get(fid) : undefined;
 
-      // fallback: try by type+amount (some actual rows may lack expense_id)
-      if (!match) {
-        const key = `${String(f.type || "").trim().toLowerCase()}|${Number(f.amount || f.paid_amount || 0)}`;
-        const list = actualByTypeAmount[key] || [];
-        match = list.length ? list[0] : undefined;
-      }
+    //   // fallback: try by type+amount (some actual rows may lack expense_id)
+    //   if (!match) {
+    //     const key = `${String(f.type || "").trim().toLowerCase()}|${Number(f.amount || f.paid_amount || 0)}`;
+    //     const list = actualByTypeAmount[key] || [];
+    //     match = list.length ? list[0] : undefined;
+    //   }
 
-      // determine candidate paid amount/date from match (use sensible fallbacks)
-      const candidatePaidAmount =
-        match?.paid_amount != null
-          ? Number(match.paid_amount)
-          : match?.actual_amount != null
-          ? Number(match.actual_amount)
-          : f.paid_amount != null
-          ? Number(f.paid_amount)
-          : 0;
+    //   // determine candidate paid amount/date from match (use sensible fallbacks)
+    //   const candidatePaidAmount =
+    //     match?.paid_amount != null
+    //       ? Number(match.paid_amount)
+    //       : match?.actual_amount != null
+    //       ? Number(match.actual_amount)
+    //       : f.paid_amount != null
+    //       ? Number(f.paid_amount)
+    //       : 0;
 
-      let candidatePaidDate = match?.paid_date ?? f.paid_date ?? null;
-      if (!candidatePaidDate && match?.month_year) {
-        candidatePaidDate = `${String(match.month_year).slice(0, 7)}-01`;
-      }
+    //   let candidatePaidDate = match?.paid_date ?? f.paid_date ?? null;
+    //   if (!candidatePaidDate && match?.month_year) {
+    //     candidatePaidDate = `${String(match.month_year).slice(0, 7)}-01`;
+    //   }
 
-      const statusFromMatch = match?.status ? String(match.status).trim().toLowerCase() : null;
+    //   const statusFromMatch = match?.status ? String(match.status).trim().toLowerCase() : null;
 
-      // STRICT isPaid: require (paid_amount > 0 AND paid_date exists) OR explicit status === 'paid'
-      const isPaid = (candidatePaidAmount > 0 && candidatePaidDate) || statusFromMatch === "paid";
+    //   // STRICT isPaid: require (paid_amount > 0 AND paid_date exists) OR explicit status === 'paid'
+    //   const isPaid = (candidatePaidAmount > 0 && candidatePaidDate) || statusFromMatch === "paid";
 
-      // status shown in UI: prefer explicit paid marker, otherwise use forecast status or Not Paid
-      const status = isPaid ? "Paid" : f.status || (statusFromMatch ? (statusFromMatch === "paid" ? "Paid" : "Unpaid") : "Not Paid");
+    //   // status shown in UI: prefer explicit paid marker, otherwise use forecast status or Not Paid
+    //   const status = isPaid ? "Paid" : f.status || (statusFromMatch ? (statusFromMatch === "paid" ? "Paid" : "Unpaid") : "Not Paid");
 
-      merged.push({
-        expense_id: f.expense_id,
-        type: f.type,
-        description: f.description,
-        regular: f.regular ?? "No",
-        amount: Number(f.amount ?? f.paid_amount ?? 0),
-        paid_amount: isPaid ? Number(candidatePaidAmount || 0) : 0,
-        paid_date: isPaid ? (candidatePaidDate ?? null) : null,
-        status,
-        actual_amount: match ? (match.amount ?? match.paid_amount ?? match.actual_amount ?? 0) : 0,
-        _source: match ? "forecast+actual" : "forecast-only",
-        due_date: f.due_date ?? null,
-      });
-    });
+    //   merged.push({
+    //     expense_id: f.expense_id,
+    //     type: f.type,
+    //     description: f.description,
+    //     regular: f.regular ?? "No",
+    //     amount: Number(f.amount ?? f.paid_amount ?? 0),
+    //     paid_amount: isPaid ? Number(candidatePaidAmount || 0) : 0,
+    //     paid_date: isPaid ? (candidatePaidDate ?? null) : null,
+    //     status,
+    //     actual_amount: match ? (match.amount ?? match.paid_amount ?? match.actual_amount ?? 0) : 0,
+    //     _source: match ? "forecast+actual" : "forecast-only",
+    //     due_date: f.due_date ?? null,
+    //   });
+    // });
 
-    // 2) Append any actual-only rows that were not in forecast (show them too)
+ forecast.forEach((f) => {
+  const fid = f.expense_id != null ? String(f.expense_id) : null;
+  const match = fid ? actualById.get(fid) : null;
+
+  // ✅ FIXED CONDITION
+  if (f.regular === "Yes" && match) {
+    return; // skip forecast row if already paid
+  }
+
+  merged.push({
+    expense_id: f.expense_id,
+    type: f.type,
+    description: f.description,
+    regular: f.regular ?? "No",
+    amount: Number(f.amount ?? 0),
+    paid_amount: 0,
+    paid_date: null,
+    status: "Not Paid",
+    actual_amount: 0,
+    _source: "forecast-only",
+    due_date: f.due_date ?? null,
+  });
+});
+
+
+  
+// 2) Append any actual-only rows that were not in forecast (show them too)
     actual.forEach((a) => {
       const exists = merged.some(
         (m) =>

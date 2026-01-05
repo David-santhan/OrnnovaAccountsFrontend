@@ -51,6 +51,8 @@ const Expenses = () => {
   const [updateExpense, setUpdateExpense] = useState(null);
   const [holdExpense, setHoldExpense] = useState(null);
   const [openHoldDialog, setOpenHoldDialog] = useState(false);
+  const [loading, setLoading] = useState(false);
+
 const [selectedMonthYearInput, setSelectedMonthYearInput] = useState("");
   const [newExpense, setNewExpense] = useState({
     regular: "",
@@ -119,30 +121,27 @@ const [selectedMonthYearInput, setSelectedMonthYearInput] = useState("");
     - Always sets expenses state and RETURNS the fetched array
     - If no month available returns []
   */
-  const fetchExpenses = async (monthParam) => {
-    try {
-      const monthToUse = monthParam || selectedMonthYear;
-      if (!monthToUse) {
-        // nothing selected yet
-        return [];
-      }
+ const fetchExpenses = async (monthParam) => {
+  try {
+    const monthToUse = monthParam || selectedMonthYear;
+    if (!monthToUse) return [];
 
-      const res = await axios.get("http://localhost:7760/getexpenses", {
-        params: { month: monthToUse },
-        
-      });
+    setLoading(true); // 🔥 START LOADER
 
-      // API expected to return an array (you already used this shape)
-      const data = res.data || [];
+    const res = await axios.get("http://localhost:7760/getexpenses", {
+      params: { month: monthToUse },
+    });
 
-      setExpenses(data);
-      return data; // IMPORTANT: return fresh data so callers can immediately filter/apply
-      console.log(data);
-    } catch (err) {
-      console.error("Error fetching expenses:", err);
-      return [];
-    }
-  };
+    const data = res.data || [];
+    setExpenses(data);
+    return data;
+  } catch (err) {
+    console.error("Error fetching expenses:", err);
+    return [];
+  } finally {
+    setLoading(false); // 🔥 STOP LOADER
+  }
+};
 
   // Fetch expenses initially when user picks month — keep mount minimal
   useEffect(() => {
@@ -307,6 +306,18 @@ const handleApplyFilterWithData = (data, monthParam) => {
   if (filterType !== "all") {
     filtered = filtered.filter((exp) => exp.type === filterType);
   }
+  // 🔹 Status filter
+if (filterStatus !== "all") {
+  filtered = filtered.filter((exp) => {
+    const status = exp.paymentstatus || "Raised";
+
+    if (filterStatus === "Paid") return status === "Paid";
+    if (filterStatus === "Raised") return status !== "Paid";
+    return true;
+  });
+}
+
+
 
   // 🔹 Month-Year Filter (carry-forward logic)
   if (monthToUse) {
@@ -485,16 +496,18 @@ const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
 <Button
   variant="outlined"
   color="warning"
+  disabled={loading}
   onClick={async () => {
     const month = selectedMonthYearInput;
 
-    setSelectedMonthYear(month);          // update UI state
-    const refreshed = await fetchExpenses(month); // fetch correct month
-    handleApplyFilterWithData(refreshed, month);  // 🔥 pass month explicitly
+    setSelectedMonthYear(month);
+    const refreshed = await fetchExpenses(month);
+    handleApplyFilterWithData(refreshed, month);
   }}
 >
-  Search
+  {loading ? "Loading..." : "Search"}
 </Button>
+
 
 
         </div>
@@ -567,6 +580,14 @@ const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
             </TableHead>
 
             <TableBody>
+              {loading && (
+  <TableRow>
+    <TableCell colSpan={10} align="center" style={{ padding: "30px" }}>
+      Loading expenses...
+    </TableCell>
+  </TableRow>
+)}
+
               {Object.keys(totals).map((cat) => (
                 <TableRow
                   key={cat}
@@ -679,14 +700,39 @@ const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
     )}
                 <TableCell style={{ fontWeight: "700", fontSize: "14px" }}>Amount</TableCell>
                 <TableCell style={{ fontWeight: "700", fontSize: "14px" }}>Actual To Pay</TableCell>
-                <TableCell style={{ fontWeight: "700", fontSize: "14px" }}>Status</TableCell>
+          <TableCell style={{ fontWeight: "700", fontSize: "14px" }}>
+  <Box display="flex" flexDirection="column" gap={0.5}>
+    <span>Status</span>
+
+    <FormControl size="small" fullWidth>
+      <Select
+        value={filterStatus}
+        onChange={(e) => setFilterStatus(e.target.value)}
+        sx={{
+          fontSize: "13px",
+          backgroundColor: "#f7f7fb",
+          borderRadius: "6px",
+          height: "32px",
+        }}
+      >
+        <MenuItem value="all">All</MenuItem>
+        <MenuItem value="Paid">Paid</MenuItem>
+        <MenuItem value="Raised">Raised</MenuItem>
+      </Select>
+    </FormControl>
+  </Box>
+</TableCell>
+
+
                 <TableCell style={{ fontWeight: "700", fontSize: "14px" }}>Paid Date</TableCell>
                 <TableCell style={{ fontWeight: "700", fontSize: "14px" }}>Action</TableCell>
               </TableRow>
             </TableHead>
 
             <TableBody>
-  {filteredRightSide.map((exp, index) => (
+  {!loading &&
+  filteredRightSide.map((exp, index) => (
+
     <TableRow
      key={`${exp.expense_id}-${exp.month_year}`}
       hover
