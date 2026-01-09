@@ -103,6 +103,7 @@ const [selectedMonthYearInput, setSelectedMonthYearInput] = useState("");
     "Exit Employee Salaries",
     "Consultant for Salaries",
     "Pending Salaries",
+    "Insurence",
   ];
   const [filterStatus, setFilterStatus] = useState("all");
 
@@ -309,13 +310,22 @@ const handleApplyFilterWithData = (data, monthParam) => {
   // 🔹 Status filter
 if (filterStatus !== "all") {
   filtered = filtered.filter((exp) => {
-    const status = exp.paymentstatus || "Raised";
+    const isPaid =
+      exp.paymentstatus === "Paid" ||
+      (exp.paid_amount > 0 && exp.paid_date);
 
-    if (filterStatus === "Paid") return status === "Paid";
-    if (filterStatus === "Raised") return status !== "Paid";
+    if (filterStatus === "Paid") {
+      return isPaid;
+    }
+
+    if (filterStatus === "Raised") {
+      return !isPaid;
+    }
+
     return true;
   });
 }
+
 
 
 

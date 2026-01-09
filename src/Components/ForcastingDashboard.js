@@ -201,6 +201,12 @@ export default function ForcastingDashboard() {
   }
 };
 
+const getExpenseFinalAmount = (exp) => {
+  if (exp.status === "Paid") {
+    return Number(exp.paid_amount || 0);
+  }
+  return Number(exp.amount || 0);
+};
 
 
   // NOTE: intentionally do NOT auto-fetch on mount. User must pick range + click Search.
@@ -392,6 +398,8 @@ if (!Array.isArray(months) || months.length === 0) {
     };
   }, [mergedIncome]);
 
+  const addedExpenseIds = new Set();
+
   // ---------- Build merged EXPENSES (Actual + Forecast) ----------
   const mergedExpenses = useMemo(() => {
     if (!monthDetails) return [];
@@ -415,6 +423,20 @@ if (!Array.isArray(months) || months.length === 0) {
     });
 
     const merged = [];
+const isInsurance = (type) => getCategory(type) === "Insurance";
+
+    // CATEGORY DETECTION (Salary, PF, TDS, PT, Insurance)
+const MAIN = ["Salary", "PF", "Insurance", "PT", "TDS"];
+
+const getCategory = (type) => {
+  if (!type) return "Others";
+
+  let cat = type.split(" - ")[0].trim();
+
+  if (cat.toLowerCase() === "professional tax") return "PT";
+
+  return MAIN.includes(cat) ? cat : type;
+};
 
     // 1) Add ALL forecast rows (no collapsing). If there's a matching actual by id -> merge paid info,
     // but only expose paid_amount/paid_date when the payment is actually paid.
@@ -469,14 +491,97 @@ if (!Array.isArray(months) || months.length === 0) {
     //   });
     // });
 
- forecast.forEach((f) => {
+//  forecast.forEach((f) => {
+//   const fid = f.expense_id != null ? String(f.expense_id) : null;
+//   const match = fid ? actualById.get(fid) : null;
+
+//   // ✅ FIXED CONDITION
+//   if (f.regular === "Yes" && match) {
+//     return; // skip forecast row if already paid
+//   }
+
+//   merged.push({
+//     expense_id: f.expense_id,
+//     type: f.type,
+//     description: f.description,
+//     regular: f.regular ?? "No",
+//     amount: Number(f.amount ?? 0),
+//     paid_amount: 0,
+//     paid_date: null,
+//     status: "Not Paid",
+//     actual_amount: 0,
+//     _source: "forecast-only",
+//     due_date: f.due_date ?? null,
+//   });
+// });
+
+// forecast.forEach((f) => {
+//   // ❌ Skip Insurance forecast (Insurance comes only from actual)
+//   if (getCategory(f.type) === "Insurance") return;
+
+//   const fid = f.expense_id != null ? String(f.expense_id) : null;
+//   const match = fid ? actualById.get(fid) : null;
+
+//   // ✅ Determine paid info from actual if exists
+//   const paidAmount =
+//     match?.paid_amount != null
+//       ? Number(match.paid_amount)
+//       : match?.actual_amount != null
+//       ? Number(match.actual_amount)
+//       : 0;
+
+//   let paidDate = match?.paid_date ?? null;
+//   if (!paidDate && match?.month_year) {
+//     paidDate = `${String(match.month_year).slice(0, 7)}-01`;
+//   }
+
+//   // const isPaid = paidAmount > 0 && paidDate;
+// const isPaid =
+//   match &&
+//   match.payment_month === selectedMonth &&
+//   paidAmount > 0;
+
+//   merged.push({
+//     expense_id: f.expense_id,
+//     type: f.type,
+//     description: f.description,
+//     regular: f.regular ?? "No",
+//     amount: Number(f.amount ?? 0),
+
+//     // ✅ PAID fields correctly populated
+//     paid_amount: isPaid ? paidAmount : 0,
+//     paid_date: isPaid ? paidDate : null,
+//     status: isPaid ? "Paid" : "Not Paid",
+
+//     actual_amount: isPaid ? paidAmount : 0,
+//     _source: match ? "forecast+actual" : "forecast-only",
+//     due_date: f.due_date ?? null,
+//   });
+// });
+forecast.forEach((f) => {
+  // ❌ Skip Insurance forecast (Insurance comes only from actual)
+  if (getCategory(f.type) === "Insurance") return;
+
   const fid = f.expense_id != null ? String(f.expense_id) : null;
   const match = fid ? actualById.get(fid) : null;
 
-  // ✅ FIXED CONDITION
-  if (f.regular === "Yes" && match) {
-    return; // skip forecast row if already paid
-  }
+  // ✅ Month-aware payment check (CRITICAL FIX)
+  const isPaid =
+    match &&
+    match.payment_month === selectedMonth &&
+    Number(match.paid_amount || match.actual_amount || 0) > 0;
+
+  // ✅ Paid values ONLY if paid in this month
+  const paidAmount = isPaid
+    ? Number(match.paid_amount || match.actual_amount || 0)
+    : 0;
+
+  const paidDate = isPaid
+    ? match.paid_date ||
+      (match.month_year
+        ? `${String(match.month_year).slice(0, 7)}-01`
+        : null)
+    : null;
 
   merged.push({
     expense_id: f.expense_id,
@@ -484,55 +589,81 @@ if (!Array.isArray(months) || months.length === 0) {
     description: f.description,
     regular: f.regular ?? "No",
     amount: Number(f.amount ?? 0),
-    paid_amount: 0,
-    paid_date: null,
-    status: "Not Paid",
-    actual_amount: 0,
-    _source: "forecast-only",
+
+    // ✅ CORRECT & SAFE
+    paid_amount: paidAmount,
+    paid_date: paidDate,
+    status: isPaid ? "Paid" : "Not Paid",
+
+    actual_amount: isPaid ? paidAmount : 0,
+    _source: match ? "forecast+actual" : "forecast-only",
     due_date: f.due_date ?? null,
   });
 });
 
-
   
 // 2) Append any actual-only rows that were not in forecast (show them too)
-    actual.forEach((a) => {
-      const exists = merged.some(
-        (m) =>
-          m.expense_id != null &&
-          a.expense_id != null &&
-          String(m.expense_id) === String(a.expense_id)
-      );
+    // actual.forEach((a) => {
+    //   const exists = merged.some(
+    //     (m) =>
+    //       m.expense_id != null &&
+    //       a.expense_id != null &&
+    //       String(m.expense_id) === String(a.expense_id)
+    //   );
 
-      if (!exists) {
-        // normalize paid_date similarly
-        let paidDate = a.paid_date ?? null;
-        if (!paidDate && a.month_year) paidDate = `${String(a.month_year).slice(0, 7)}-01`;
+    //   if (!exists) {
+    //     // normalize paid_date similarly
+    //     let paidDate = a.paid_date ?? null;
+    //     if (!paidDate && a.month_year) paidDate = `${String(a.month_year).slice(0, 7)}-01`;
 
-        const paidAmt =
-          a.paid_amount != null
-            ? Number(a.paid_amount)
-            : a.actual_amount != null
-            ? Number(a.actual_amount)
-            : Number(a.amount ?? 0);
-        const statusFromA = a.status ? String(a.status).trim().toLowerCase() : null;
-        const isPaidA = (paidAmt > 0 && paidDate) || statusFromA === "paid";
+    //     const paidAmt =
+    //       a.paid_amount != null
+    //         ? Number(a.paid_amount)
+    //         : a.actual_amount != null
+    //         ? Number(a.actual_amount)
+    //         : Number(a.amount ?? 0);
+    //     const statusFromA = a.status ? String(a.status).trim().toLowerCase() : null;
+    //     const isPaidA = (paidAmt > 0 && paidDate) || statusFromA === "paid";
 
-        merged.push({
-          expense_id: a.expense_id,
-          type: a.expense_type || a.type || "Other",
-          description: a.description,
-          regular: a.regular ?? "No",
-          amount: Number(a.amount ?? a.paid_amount ?? 0),
-          paid_amount: isPaidA ? paidAmt : 0,
-          paid_date: isPaidA ? paidDate : null,
-          status: isPaidA ? "Paid" : a.status ?? "Not Paid",
-          actual_amount: Number(a.amount ?? a.paid_amount ?? a.actual_amount ?? 0),
-          _source: "actual-only",
-          due_date: a.due_date ?? null,
-        });
-      }
+    //     merged.push({
+    //       expense_id: a.expense_id,
+    //       type: a.expense_type || a.type || "Other",
+    //       description: a.description,
+    //       regular: a.regular ?? "No",
+    //       amount: Number(a.amount ?? a.paid_amount ?? 0),
+    //       paid_amount: isPaidA ? paidAmt : 0,
+    //       paid_date: isPaidA ? paidDate : null,
+    //       status: isPaidA ? "Paid" : a.status ?? "Not Paid",
+    //       actual_amount: Number(a.amount ?? a.paid_amount ?? a.actual_amount ?? 0),
+    //       _source: "actual-only",
+    //       due_date: a.due_date ?? null,
+    //     });
+    //   }
+    // });
+actual.forEach((a) => {
+  if (isInsurance(a.expense_type || a.type)) return;
+
+  const exists =
+    a.expense_id != null &&
+    addedExpenseIds.has(String(a.expense_id));
+
+  if (!exists) {
+    merged.push({
+      expense_id: a.expense_id,
+      type: a.expense_type || a.type || "Other",
+      description: a.description,
+      regular: a.regular ?? "No",
+      amount: Number(a.amount ?? a.paid_amount ?? 0),
+      paid_amount: Number(a.paid_amount ?? 0),
+      paid_date: a.paid_date ?? null,
+      status: "Paid",
+      actual_amount: Number(a.amount ?? a.paid_amount ?? 0),
+      _source: "actual-only",
+      due_date: a.due_date ?? null,
     });
+  }
+});
+
 
     return merged;
   }, [monthDetails]);
@@ -551,20 +682,34 @@ if (!Array.isArray(months) || months.length === 0) {
   };
 
   // Build Category Totals (monthly)
-  const { categoryTotals, grandTotalExpenses } = useMemo(() => {
-    const totals = {};
-    (mergedExpenses || []).forEach((exp) => {
-      const cat = getCategory(exp.type);
-      if (!totals[cat]) totals[cat] = 0;
-      const finalAmount = exp.actual_amount ? exp.actual_amount : exp.amount;
-      totals[cat] += Number(finalAmount || 0);
-    });
+  // const { categoryTotals, grandTotalExpenses } = useMemo(() => {
+  //   const totals = {};
+  //   (mergedExpenses || []).forEach((exp) => {
+  //     const cat = getCategory(exp.type);
+  //     if (!totals[cat]) totals[cat] = 0;
+  //     const finalAmount = exp.actual_amount ? exp.actual_amount : exp.amount;
+  //     totals[cat] += Number(finalAmount || 0);
+  //   });
 
-    return {
-      categoryTotals: totals,
-      grandTotalExpenses: Object.values(totals).reduce((a, b) => a + b, 0),
-    };
-  }, [mergedExpenses]);
+  //   return {
+  //     categoryTotals: totals,
+  //     grandTotalExpenses: Object.values(totals).reduce((a, b) => a + b, 0),
+  //   };
+  // }, [mergedExpenses]);
+const { categoryTotals, grandTotalExpenses } = useMemo(() => {
+  const totals = {};
+  (mergedExpenses || []).forEach((exp) => {
+    const cat = getCategory(exp.type);
+    if (!totals[cat]) totals[cat] = 0;
+
+    totals[cat] += getExpenseFinalAmount(exp);
+  });
+
+  return {
+    categoryTotals: totals,
+    grandTotalExpenses: Object.values(totals).reduce((a, b) => a + b, 0),
+  };
+}, [mergedExpenses]);
 
   const expenseSummary = useMemo(() => {
     if (!mergedExpenses) return null;
@@ -649,30 +794,63 @@ if (!Array.isArray(months) || months.length === 0) {
     });
   }, [mergedIncome, appliedStart, appliedEnd, incomeStatusFilter]);
 
-  const filteredExpenses = useMemo(() => {
-    if (!mergedExpenses) return [];
+  // const filteredExpenses = useMemo(() => {
+  //   if (!mergedExpenses) return [];
 
-    return mergedExpenses.filter((exp) => {
-      const dateStr = exp.status === "Paid" ? exp.paid_date : exp.due_date;
-      if (!dateStr) return false;
+  //   return mergedExpenses.filter((exp) => {
+  //     // const dateStr = exp.status === "Paid" ? exp.paid_date : exp.due_date;
+  //     const dateStr =
+  // exp.status === "Paid"
+  //   ? exp.paid_date || exp.due_date   // ✅ fallback added
+  //   : exp.due_date;
 
-      const d = dayjs(dateStr);
-      if (!d.isValid()) return false;
+  //     if (!dateStr) return false;
 
-      const afterStart = !appliedStart || !d.isBefore(appliedStart, "day");
-      const beforeEnd = !appliedEnd || !d.isAfter(appliedEnd, "day");
+  //     const d = dayjs(dateStr);
+  //     if (!d.isValid()) return false;
 
-      if (!(afterStart && beforeEnd)) return false;
+  //     const afterStart = !appliedStart || !d.isBefore(appliedStart, "day");
+  //     const beforeEnd = !appliedEnd || !d.isAfter(appliedEnd, "day");
 
-      if (expenseStatusFilter === "All") return true;
-      if (expenseStatusFilter === "Paid") return exp.status === "Paid";
-      if (expenseStatusFilter === "Not Paid") return exp.status !== "Paid";
+  //     if (!(afterStart && beforeEnd)) return false;
 
-      return true;
-    });
-  }, [mergedExpenses, appliedStart, appliedEnd, expenseStatusFilter]);
+  //     if (expenseStatusFilter === "All") return true;
+  //     if (expenseStatusFilter === "Paid") return exp.status === "Paid";
+  //     if (expenseStatusFilter === "Not Paid") return exp.status !== "Paid";
+
+  //     return true;
+  //   });
+  // }, [mergedExpenses, appliedStart, appliedEnd, expenseStatusFilter]);
 
   // Summaries computed from filtered lists
+  
+  const filteredExpenses = useMemo(() => {
+  if (!mergedExpenses) return [];
+
+  return mergedExpenses.filter((exp) => {
+    const dateStr =
+      exp.status === "Paid"
+        ? exp.paid_date || exp.due_date
+        : exp.due_date;
+
+    if (!dateStr) return false;
+
+    const d = dayjs(dateStr);
+    if (!d.isValid()) return false;
+
+    const afterStart = !appliedStart || !d.isBefore(appliedStart, "day");
+    const beforeEnd  = !appliedEnd   || !d.isAfter(appliedEnd, "day");
+
+    if (!(afterStart && beforeEnd)) return false;
+
+    if (expenseStatusFilter === "All") return true;
+    if (expenseStatusFilter === "Paid") return exp.status === "Paid";
+    if (expenseStatusFilter === "Not Paid") return exp.status !== "Paid";
+
+    return true;
+  });
+}, [mergedExpenses, appliedStart, appliedEnd, expenseStatusFilter]);
+
   const dateRangeIncomeSummary = useMemo(() => {
     const records = filteredIncome || [];
     let receivedCount = 0;
@@ -707,50 +885,95 @@ if (!Array.isArray(months) || months.length === 0) {
     };
   }, [filteredIncome]);
 
-  const dateRangeExpenseSummary = useMemo(() => {
-    const records = filteredExpenses || [];
-    let paidCount = 0;
-    let notPaidCount = 0;
-    let totalExpense = 0;
-    let totalPaidAmount = 0;
-    let totalNotPaidAmount = 0;
+  // const dateRangeExpenseSummary = useMemo(() => {
+  //   const records = filteredExpenses || [];
+  //   let paidCount = 0;
+  //   let notPaidCount = 0;
+  //   let totalExpense = 0;
+  //   let totalPaidAmount = 0;
+  //   let totalNotPaidAmount = 0;
 
-    records.forEach((exp) => {
-      const amount = Number(exp.amount || 0);
-      totalExpense += amount;
-      if (exp.status === "Paid") {
-        paidCount++;
-        totalPaidAmount += amount;
-      } else {
-        notPaidCount++;
-        totalNotPaidAmount += amount;
-      }
-    });
+  //   records.forEach((exp) => {
+  //     const amount = Number(exp.amount || 0);
+  //     totalExpense += amount;
+  //     if (exp.status === "Paid") {
+  //       paidCount++;
+  //       totalPaidAmount += amount;
+  //     } else {
+  //       notPaidCount++;
+  //       totalNotPaidAmount += amount;
+  //     }
+  //   });
 
-    return {
-      paidCount,
-      notPaidCount,
-      totalExpense,
-      totalPaidAmount,
-      totalNotPaidAmount,
-    };
-  }, [filteredExpenses]);
+  //   return {
+  //     paidCount,
+  //     notPaidCount,
+  //     totalExpense,
+  //     totalPaidAmount,
+  //     totalNotPaidAmount,
+  //   };
+  // }, [filteredExpenses]);
 
   // Category totals from filtered expenses
-  const { dateCategoryTotals, dateGrandTotalExpenses } = useMemo(() => {
-    const totals = {};
-    (filteredExpenses || []).forEach((exp) => {
-      const cat = getCategory(exp.type);
-      if (!totals[cat]) totals[cat] = 0;
-      const finalAmount = exp.actual_amount ? exp.actual_amount : exp.amount;
-      totals[cat] += Number(finalAmount || 0);
-    });
+  // const { dateCategoryTotals, dateGrandTotalExpenses } = useMemo(() => {
+  //   const totals = {};
+  //   (filteredExpenses || []).forEach((exp) => {
+  //     const cat = getCategory(exp.type);
+  //     if (!totals[cat]) totals[cat] = 0;
+  //     const finalAmount = exp.actual_amount ? exp.actual_amount : exp.amount;
+  //     totals[cat] += Number(finalAmount || 0);
+  //   });
 
-    return {
-      dateCategoryTotals: totals,
-      dateGrandTotalExpenses: Object.values(totals).reduce((a, b) => a + b, 0),
-    };
-  }, [filteredExpenses]);
+  //   return {
+  //     dateCategoryTotals: totals,
+  //     dateGrandTotalExpenses: Object.values(totals).reduce((a, b) => a + b, 0),
+  //   };
+  // }, [filteredExpenses]);
+
+const dateRangeExpenseSummary = useMemo(() => {
+  let paidCount = 0;
+  let notPaidCount = 0;
+  let totalExpense = 0;
+  let totalPaidAmount = 0;
+  let totalNotPaidAmount = 0;
+
+  (filteredExpenses || []).forEach((exp) => {
+    const finalAmount = getExpenseFinalAmount(exp);
+
+    totalExpense += finalAmount;
+
+    if (exp.status === "Paid") {
+      paidCount++;
+      totalPaidAmount += finalAmount;
+    } else {
+      notPaidCount++;
+      totalNotPaidAmount += finalAmount;
+    }
+  });
+
+  return {
+    paidCount,
+    notPaidCount,
+    totalExpense,
+    totalPaidAmount,
+    totalNotPaidAmount,
+  };
+}, [filteredExpenses]);
+
+  const { dateCategoryTotals, dateGrandTotalExpenses } = useMemo(() => {
+  const totals = {};
+  (filteredExpenses || []).forEach((exp) => {
+    const cat = getCategory(exp.type);
+    if (!totals[cat]) totals[cat] = 0;
+
+    totals[cat] += getExpenseFinalAmount(exp);
+  });
+
+  return {
+    dateCategoryTotals: totals,
+    dateGrandTotalExpenses: Object.values(totals).reduce((a, b) => a + b, 0),
+  };
+}, [filteredExpenses]);
 
   // Acc Balance Calculation (unchanged main view)
   const safeNumber = (v) => Number(v || 0);
@@ -1155,7 +1378,8 @@ if (!Array.isArray(months) || months.length === 0) {
                       <TableHead>
                         <TableRow style={{ backgroundColor: "#f0f2ff" }}>
                           <TableCell colSpan={2} style={{ fontWeight: 800, fontSize: "15px", color: "#3071a3", padding: "14px", textAlign: "center", fontFamily: "monospace" }}>
-                            TOTAL — {currency(dateGrandTotalExpenses)}
+                           TOTAL — {currency(grandTotalExpenses)}
+
                           </TableCell>
                         </TableRow>
 
@@ -1260,3 +1484,4 @@ if (!Array.isArray(months) || months.length === 0) {
     </div>
   );
 }
+
