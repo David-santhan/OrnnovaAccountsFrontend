@@ -52,7 +52,7 @@ const Expenses = () => {
   const [holdExpense, setHoldExpense] = useState(null);
   const [openHoldDialog, setOpenHoldDialog] = useState(false);
   const [loading, setLoading] = useState(false);
-
+  
 const [selectedMonthYearInput, setSelectedMonthYearInput] = useState("");
   const [newExpense, setNewExpense] = useState({
     regular: "",
@@ -71,6 +71,7 @@ const [selectedMonthYearInput, setSelectedMonthYearInput] = useState("");
   const [paidDate, setPaidDate] = useState(new Date().toISOString().split("T")[0]);
   const [paidAmount, setPaidAmount] = useState("");
   const [monthYear, setMonthYear] = useState("");
+ const [updateMonthYear, setUpdateMonthYear] = useState("");
 
   const expenseOptions = [
     "Loan",
@@ -129,13 +130,18 @@ const [selectedMonthYearInput, setSelectedMonthYearInput] = useState("");
 
     setLoading(true); // 🔥 START LOADER
 
-    const res = await axios.get("http://localhost:7760/getexpenses", {
-      params: { month: monthToUse },
-    });
+   const res = await axios.get("http://localhost:7760/getexpenses", {
+  params: { month: monthToUse },
+});
 
-    const data = res.data || [];
-    setExpenses(data);
-    return data;
+const data = (res.data || []).map((r) => ({
+  ...r,
+  paymentstatus: r.paymentstatus || r.status || "Raised", // 🔑 FIX
+}));
+
+setExpenses(data);
+return data;
+
   } catch (err) {
     console.error("Error fetching expenses:", err);
     return [];
@@ -217,16 +223,15 @@ const [selectedMonthYearInput, setSelectedMonthYearInput] = useState("");
   }
 };
 
- const handleMarkAsPaid = async (expenseId) => {
-  if (!paidDate || !paidAmount) {
-    alert("⚠️ Please enter both Paid Date and Amount Paid.");
+const handleMarkAsPaid = async () => {
+  if (!paidDate || !paidAmount || !payExpense) {
+    alert("⚠️ Please enter Paid Date and Amount Paid.");
     return;
   }
 
-  const numericExpenseId = parseInt(expenseId.replace(/\D/g, ""), 10);
-
   const payload = {
-    expense_id: numericExpenseId,
+    expense_id: payExpense.expense_id,          // ✅ FIX
+    payment_row_id: payExpense.payment_row_id || null,
     paid_amount: Number(paidAmount),
     paid_date: paidDate,
   };
@@ -235,24 +240,24 @@ const [selectedMonthYearInput, setSelectedMonthYearInput] = useState("");
     const response = await axios.put(
       "http://localhost:7760/pay-expense",
       payload
+      
+    );
+    console.log("api call"+response)
+
+    // ✅ UI UPDATE — ROW LEVEL (CORRECT)
+    setFilteredExpenses((prev) =>
+      prev.map((exp) =>
+        exp.row_id === payExpense.row_id
+          ? {
+              ...exp,
+              paymentstatus: "Paid",
+              paid_amount: Number(paidAmount),
+              paid_date: paidDate,
+            }
+          : exp
+      )
     );
 
-    // ✅ 1️⃣ IMMEDIATE UI UPDATE (THIS WAS MISSING)
-   setFilteredExpenses((prev) =>
-  prev.map((exp) =>
-    exp.expense_id === numericExpenseId &&
-    exp.month_year === selectedMonthYear
-      ? {
-          ...exp,
-          paymentstatus: "Paid",
-          paid_amount: Number(paidAmount),
-          paid_date: paidDate,
-          expensestatus: "Paid",
-        }
-      : exp
-  )
-);
-    // Close modal
     setOpenPayDialog(false);
     setPayExpense(null);
     setPaidDate("");
@@ -263,7 +268,6 @@ const [selectedMonthYearInput, setSelectedMonthYearInput] = useState("");
     );
     setSnackbarOpen(true);
 
-    // ✅ 2️⃣ BACKEND SYNC (SAFE REFRESH)
     const monthToUse = selectedMonthYear || selectedMonthYearInput;
     const refreshed = await fetchExpenses(monthToUse);
     handleApplyFilterWithData(refreshed);
@@ -277,6 +281,7 @@ const [selectedMonthYearInput, setSelectedMonthYearInput] = useState("");
   }
 };
 
+
 // Open Pay modal and ensure amount is chosen from actual_to_pay OR amount
 const openPayForExpense = (e, exp) => {
   // prevent table row click
@@ -285,7 +290,13 @@ const openPayForExpense = (e, exp) => {
   // Prefer actual_to_pay, then actual_amount (if some naming), then amount
   const amountToPay = Number(exp.actual_to_pay ?? exp.actual_amount ?? exp.amount ?? 0);
 
-  setPayExpense({ ...exp, amount: amountToPay }); // ensure payExpense.amount exists
+setPayExpense({
+  ...exp,
+  amount: amountToPay,
+  payment_row_id: exp.payment_row_id || null,
+  row_id: exp.row_id,
+});
+ // ensure payExpense.amount exists
   setPaidDate(new Date().toISOString().split("T")[0]);
   setPaidAmount(amountToPay);
   setOpenPayDialog(true);
@@ -310,9 +321,10 @@ const handleApplyFilterWithData = (data, monthParam) => {
   // 🔹 Status filter
 if (filterStatus !== "all") {
   filtered = filtered.filter((exp) => {
-    const isPaid =
-      exp.paymentstatus === "Paid" ||
-      (exp.paid_amount > 0 && exp.paid_date);
+    // const isPaid =
+    //   exp.paymentstatus === "Paid" ||
+    //   (exp.paid_amount > 0 && exp.paid_date);
+const isPaid = exp.paymentstatus === "Paid";
 
     if (filterStatus === "Paid") {
       return isPaid;
@@ -326,24 +338,37 @@ if (filterStatus !== "all") {
   });
 }
 
+  // 🔹 Month-Year Filter (FINAL – BASED ON DUE DATE)
+// if (monthToUse) {
+//   filtered = filtered.filter((exp) => {
+//     const dueMonth = exp.due_date?.slice(0, 7);
+//     const paidMonth = exp.paid_date?.slice(0, 7);
+
+//     // ✅ PAID → show only in paid month
+//     if (exp.paymentstatus === "Paid") {
+//   return exp.month_year === monthToUse;
+// }
 
 
+//     // ✅ UNPAID → show only in due month
+//     return dueMonth === monthToUse;
+//   });
+// }
 
-  // 🔹 Month-Year Filter (carry-forward logic)
-  if (monthToUse) {
-    filtered = filtered.filter((exp) => {
-      const raisedMonth = exp.raised_date?.slice(0, 7);
-      const paidMonth = exp.paid_date?.slice(0, 7);
+if (monthToUse) {
+  filtered = filtered.filter((exp) => {
+    const dueMonth = exp.due_date?.slice(0, 7);
+    const paidMonth = exp.paid_date?.slice(0, 7);
 
-      // 🔹 PAID → show ONLY in paid month
-      if (exp.paymentstatus === "Paid") {
-        return paidMonth === monthToUse;
-      }
+    // ✅ PAID → show in PAID MONTH
+    if (exp.paymentstatus === "Paid") {
+      return paidMonth === monthToUse;
+    }
 
-      // 🔹 UNPAID → carry forward until paid
-      return raisedMonth && raisedMonth <= monthToUse;
-    });
-  }
+    // ✅ UNPAID → show in DUE MONTH
+    return dueMonth === monthToUse;
+  });
+}
 
   setFilteredExpenses(filtered);
   setMonthYear(monthToUse); // ✅ important
@@ -358,25 +383,39 @@ if (filterStatus !== "all") {
   const handleSaveChanges = async () => {
     try {
       const numericId = Number(selectedExpense.id.replace("E", ""));
-
-      await axios.put(`http://localhost:7760/updateexpense/${numericId}`, {
-        regular: selectedExpense.regular,
-        amount: selectedExpense.amount,
-        raised_date: selectedExpense.raised_date,
+      
+      // month_year MUST remain the origin month (the month this expense instance belongs to).
+      // due_date decides which month it appears in (carried forward).
+      const originMonthYear = selectedExpense.month_year || selectedMonthYear;
+      
+      // Use saveExpensePayment endpoint to update actual_to_pay and due_date
+      const payload = {
+        expense_id: numericId,
+        month_year: originMonthYear,
+        payment_row_id: selectedExpense.payment_row_id || null,
+        actual_amount: selectedExpense.actual_to_pay || selectedExpense.amount,
         due_date: selectedExpense.due_date,
-        status: selectedExpense.status,
-        month_year: selectedMonthYear,
-      });
+      };
+
+      await axios.post("http://localhost:7760/saveExpensePayment", payload);
 
       alert("Expense updated successfully!");
       setIsEditing(false);
+      setOpenDetailDialog(false);
 
-      // Fetch fresh data and apply filters
-      const refreshed = await fetchExpenses(selectedMonthYear);
+      // Refresh both current month and due-date month (because row may "move" on screen)
+      const monthToUse = selectedMonthYear || selectedMonthYearInput;
+      const refreshed = await fetchExpenses(monthToUse);
       handleApplyFilterWithData(refreshed);
+      
+      // Also refresh the new due date month if different
+      const dueMonth = selectedExpense.due_date ? selectedExpense.due_date.slice(0, 7) : originMonthYear;
+      if (dueMonth !== monthToUse) {
+        await fetchExpenses(dueMonth);
+      }
     } catch (err) {
       console.error("Error updating expense:", err);
-      alert("Failed to update expense!");
+      alert(err.response?.data?.error || "Failed to update expense!");
     }
   };
 
@@ -744,7 +783,8 @@ const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
   filteredRightSide.map((exp, index) => (
 
     <TableRow
-     key={`${exp.expense_id}-${exp.month_year}`}
+  key={exp.row_id}
+
       hover
       sx={{
         cursor: "pointer",
@@ -801,7 +841,7 @@ const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
 
       {/* Actual To Pay */}
       <TableCell style={{ fontWeight: "600", fontSize: "14px" }}>
-        {exp.paymentstatus === "Paid" ? (
+      {exp.paymentstatus === "Paid" ? (
           <div style={{ display: "flex", flexDirection: "column" }}>
             <span style={{ color: "green", fontWeight: "700" }}>
               Paid: {formatCurrency(exp.paid_amount)}
@@ -815,9 +855,27 @@ const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
                 : "-"}
             </span>
           </div>
-        ) : exp.actual_to_pay ? (
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <span>{formatCurrency(exp.actual_to_pay)}</span>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", cursor: "pointer" }}>
+            <span 
+              onClick={(e) => {
+                e.stopPropagation();
+                setUpdateExpense({
+                  ...exp,
+                  actual_to_pay: exp.actual_to_pay || exp.amount // Ensure actual_to_pay is set
+                });
+                setUpdateMonthYear(exp.month_year || selectedMonthYear);
+                setOpenUpdateDialog(true);
+              }}
+              style={{ 
+                color: exp.actual_to_pay ? "#000" : "#2563eb",
+                textDecoration: "underline",
+                fontWeight: "600",
+                cursor: "pointer"
+              }}
+            >
+              {exp.actual_to_pay ? formatCurrency(exp.actual_to_pay) : "Click to Update"}
+            </span>
             <span style={{ fontSize: "12px", color: "#6b7280" }}>
               Due:{" "}
               {exp.due_date
@@ -827,22 +885,6 @@ const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
                 : "-"}
             </span>
           </div>
-        ) : (
-          <Link
-            onClick={(e) => {
-              e.stopPropagation();
-              setUpdateExpense(exp);
-              setOpenUpdateDialog(true);
-            }}
-            style={{
-              cursor: "pointer",
-              textDecoration: "underline",
-              color: "#2563eb",
-              fontWeight: "600",
-            }}
-          >
-            Update
-          </Link>
         )}
       </TableCell>
 
@@ -883,29 +925,27 @@ const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
 
       {/* Action */}
       <TableCell>
-        {exp.paymentstatus === "Paid" ? (
-          <VerifiedRoundedIcon
-            style={{
-              color: "green",
-              fontSize: "32px",
-              transform: "rotate(-10deg)",
-            }}
-          />
-        ) : (
-          <Button
-            variant="contained"
-            size="small"
-            sx={{
-              backgroundColor: "rgba(7, 186, 126, 0.85)",
-              fontWeight: "700",
-              borderRadius: "6px",
-            }}
-            onClick={(e) => openPayForExpense(e, exp)}
-          >
-            Pay
-          </Button>
-        )}
-      </TableCell>
+  {exp.paymentstatus === "Paid" ? (
+
+    <VerifiedRoundedIcon
+      style={{ color: "green", fontSize: "32px" }}
+    />
+  ) : (
+    <Button
+      variant="contained"
+      size="small"
+      sx={{
+        backgroundColor: "rgba(7, 186, 126, 0.85)",
+        fontWeight: "700",
+        borderRadius: "6px",
+      }}
+      onClick={(e) => openPayForExpense(e, exp)}
+    >
+      Pay
+    </Button>
+  )}
+</TableCell>
+
     </TableRow>
   ))}
 </TableBody>
@@ -921,13 +961,53 @@ const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
         <DialogContent dividers>
           {updateExpense && (
             <>
-              <h3 style={{ textAlign: "center", fontFamily: "monospace", color: "gray" }}>{updateExpense.type} for Month {selectedMonthYear}</h3>
+              <h3 style={{ textAlign: "center", fontFamily: "monospace", color: "gray" }}>
+                {updateExpense.type} 
+                {updateExpense.month_year && (
+                  <span style={{ fontSize: "14px", display: "block", marginTop: "5px" }}>
+                    Month: {new Date(updateExpense.month_year + "-01").toLocaleString("en-GB", { month: "long", year: "numeric" })}
+                  </span>
+                )}
+              </h3>
               <hr />
-              <TextField label="Month - Year" fullWidth margin="normal" value={selectedMonthYear} InputProps={{ readOnly: true }} />
+              
+              <TextField 
+                label="Actual To Pay" 
+                type="number" 
+                fullWidth 
+                margin="normal" 
+                value={updateExpense.actual_to_pay || updateExpense.amount || ""} 
+                onChange={(e) => setUpdateExpense({ ...updateExpense, actual_to_pay: e.target.value })} 
+              />
 
-              <TextField label="Actual Amount" type="text" fullWidth margin="normal" defaultValue={updateExpense.amount} onChange={(e) => setUpdateExpense({ ...updateExpense, amount: e.target.value })} />
-
-              <TextField label="Due Date" type="date" fullWidth margin="normal" value={updateExpense.due_date ? updateExpense.due_date.split("T")[0] : ""} onChange={(e) => setUpdateExpense({ ...updateExpense, due_date: e.target.value })} InputLabelProps={{ shrink: true }} />
+              <TextField 
+                label="Due Date" 
+                type="date" 
+                fullWidth 
+                margin="normal" 
+                value={updateExpense.due_date ? (updateExpense.due_date.includes("T") ? updateExpense.due_date.split("T")[0] : updateExpense.due_date) : ""} 
+                onChange={(e) => {
+                  const newDueDate = e.target.value;
+                  setUpdateExpense({ ...updateExpense, due_date: newDueDate });
+                  // Auto-update month_year based on due_date
+                  if (newDueDate) {
+                    setUpdateMonthYear(newDueDate.slice(0, 7));
+                  }
+                }} 
+                InputLabelProps={{ shrink: true }} 
+              />
+              
+              <TextField 
+                label="Month - Year (Auto-set from Due Date)" 
+                type="month" 
+                fullWidth 
+                margin="normal" 
+                InputLabelProps={{ shrink: true }} 
+                value={updateMonthYear || (updateExpense.due_date ? updateExpense.due_date.slice(0, 7) : updateExpense.month_year || selectedMonthYear)} 
+                onChange={(e) => setUpdateMonthYear(e.target.value)} 
+                disabled
+                helperText="This will be automatically set based on Due Date"
+              />
             </>
           )}
         </DialogContent>
@@ -950,9 +1030,13 @@ const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
               }
               numericExpenseId = Number(numericExpenseId);
 
+              // month_year MUST remain the origin month (the month this expense instance belongs to)
+              const originMonthYear = updateExpense.month_year || selectedMonthYear;
+
              const payload = {
   expense_id: numericExpenseId,
-  month_year: selectedMonthYear,
+  month_year: originMonthYear,
+  payment_row_id: updateExpense.payment_row_id || null, // 🔑 Include payment_row_id if exists
   actual_amount: updateExpense.actual_to_pay ?? updateExpense.amount,
   due_date: updateExpense.due_date,
 };
@@ -961,14 +1045,20 @@ const grandTotal = Object.values(totals).reduce((sum, val) => sum + val, 0);
                 alert("Expense Updated Successfully");
                 setOpenUpdateDialog(false);
 
-                // REFRESH immediately and apply filter so UI reflects changes
+                // 🔑 REFRESH both current month and new due date month
                 const monthToUse = selectedMonthYear || selectedMonthYearInput;
-const refreshed = await fetchExpenses(monthToUse);
-handleApplyFilterWithData(refreshed);
+                const refreshed = await fetchExpenses(monthToUse);
+                handleApplyFilterWithData(refreshed);
+                
+                // 🔑 Also refresh the new due date month if different
+                const dueMonth = updateExpense.due_date ? updateExpense.due_date.slice(0, 7) : originMonthYear;
+                if (dueMonth !== monthToUse) {
+                  await fetchExpenses(dueMonth);
+                }
 
               } catch (err) {
                 console.error(err);
-                alert("Error saving expense");
+                alert(err.response?.data?.error || "Error saving expense");
               }
             }}
           >
@@ -1000,12 +1090,17 @@ handleApplyFilterWithData(refreshed);
 
           {/* Month (VERY IMPORTANT) */}
           <TableRow>
-            <TableCell><strong>Month</strong></TableCell>
+            <TableCell><strong>Month & Year</strong></TableCell>
             <TableCell>
               {selectedExpense.month_year
                 ? new Date(selectedExpense.month_year + "-01")
                     .toLocaleString("en-GB", { month: "long", year: "numeric" })
                 : "-"}
+              {selectedExpense.paymentstatus === "Paid" && selectedExpense.paid_date && (
+                <span style={{ marginLeft: "10px", color: "green", fontSize: "12px" }}>
+                  (Paid in {new Date(selectedExpense.paid_date).toLocaleString("en-GB", { month: "long", year: "numeric" })})
+                </span>
+              )}
             </TableCell>
           </TableRow>
 
@@ -1070,6 +1165,31 @@ handleApplyFilterWithData(refreshed);
             </TableCell>
           </TableRow>
 
+          {/* Actual To Pay */}
+          <TableRow>
+            <TableCell><strong>Actual To Pay</strong></TableCell>
+            <TableCell>
+              {isEditing ? (
+                <TextField
+                  type="number"
+                  value={selectedExpense.actual_to_pay || selectedExpense.amount || ""}
+                  onChange={(e) =>
+                    setSelectedExpense({
+                      ...selectedExpense,
+                      actual_to_pay: e.target.value,
+                    })
+                  }
+                  fullWidth
+                  size="small"
+                />
+              ) : (
+                selectedExpense.actual_to_pay 
+                  ? formatCurrency(selectedExpense.actual_to_pay)
+                  : formatCurrency(selectedExpense.amount || 0)
+              )}
+            </TableCell>
+          </TableRow>
+
           {/* Original Start Date */}
           <TableRow>
             <TableCell>
@@ -1088,15 +1208,31 @@ handleApplyFilterWithData(refreshed);
             </TableCell>
           </TableRow>
 
-          {/* Month Due Date */}
+          {/* Due Date */}
           <TableRow>
-            <TableCell><strong>Due Date (This Month)</strong></TableCell>
+            <TableCell><strong>Due Date</strong></TableCell>
             <TableCell>
-              {selectedExpense.due_date
-                ? new Date(selectedExpense.due_date)
-                    .toLocaleDateString("en-GB")
-                    .replaceAll("/", "-")
-                : "-"}
+              {isEditing ? (
+                <TextField
+                  type="date"
+                  value={selectedExpense.due_date ? selectedExpense.due_date.split("T")[0] : ""}
+                  onChange={(e) =>
+                    setSelectedExpense({
+                      ...selectedExpense,
+                      due_date: e.target.value,
+                    })
+                  }
+                  fullWidth
+                  size="small"
+                  InputLabelProps={{ shrink: true }}
+                />
+              ) : (
+                selectedExpense.due_date
+                  ? new Date(selectedExpense.due_date)
+                      .toLocaleDateString("en-GB")
+                      .replaceAll("/", "-")
+                  : "-"
+              )}
             </TableCell>
           </TableRow>
 
@@ -1257,9 +1393,14 @@ handleApplyFilterWithData(refreshed);
 
         <DialogActions>
           <Button onClick={() => setOpenPayDialog(false)}>Cancel</Button>
-          <Button variant="contained" sx={{ backgroundColor: "green" }} onClick={() => handleMarkAsPaid(payExpense.id)}>
-            Mark Paid
-          </Button>
+   <Button
+  variant="contained"
+  sx={{ backgroundColor: "green" }}
+  onClick={handleMarkAsPaid}
+>
+  Mark Paid
+</Button>
+
         </DialogActions>
       </Dialog>
 

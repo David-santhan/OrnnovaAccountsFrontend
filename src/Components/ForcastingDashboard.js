@@ -401,120 +401,163 @@ if (!Array.isArray(months) || months.length === 0) {
   const addedExpenseIds = new Set();
 
   // ---------- Build merged EXPENSES (Actual + Forecast) ----------
-  const mergedExpenses = useMemo(() => {
-    if (!monthDetails) return [];
+//   const mergedExpenses = useMemo(() => {
+//     if (!monthDetails) return [];
 
-    const actual = monthDetails.actualExpenseItems || []; // actual paid rows (from backend)
-    const forecast = monthDetails.forecastExpenseItems || []; // forecast / expected rows (from backend)
+//     const actual = monthDetails.actualExpenseItems || []; // actual paid rows (from backend)
+//     const forecast = monthDetails.forecastExpenseItems || []; // forecast / expected rows (from backend)
 
-    // map actual payments by expense_id for quick lookup
-    const actualById = new Map();
-    actual.forEach((a) => {
-      if (a.expense_id != null) actualById.set(String(a.expense_id), a);
-    });
+//     // map actual payments by expense_id for quick lookup
+//     const actualById = new Map();
+//     actual.forEach((a) => {
+//       if (a.expense_id != null) actualById.set(String(a.expense_id), a);
+//     });
 
-    // also index actual rows by type+amount as a fallback (helps when expense_id not present)
-    const actualByTypeAmount = {};
-    actual.forEach((a) => {
-      const key = `${String(a.expense_type || a.type || "").trim().toLowerCase()}|${Number(
-        a.amount || a.paid_amount || 0
-      )}`;
-      (actualByTypeAmount[key] ||= []).push(a);
-    });
+//     // also index actual rows by type+amount as a fallback (helps when expense_id not present)
+//     const actualByTypeAmount = {};
+//     actual.forEach((a) => {
+//       const key = `${String(a.expense_type || a.type || "").trim().toLowerCase()}|${Number(
+//         a.amount || a.paid_amount || 0
+//       )}`;
+//       (actualByTypeAmount[key] ||= []).push(a);
+//     });
 
-    const merged = [];
-const isInsurance = (type) => getCategory(type) === "Insurance";
+//     const merged = [];
+// const isInsurance = (type) => getCategory(type) === "Insurance";
 
-    // CATEGORY DETECTION (Salary, PF, TDS, PT, Insurance)
-const MAIN = ["Salary", "PF", "Insurance", "PT", "TDS"];
+//     // CATEGORY DETECTION (Salary, PF, TDS, PT, Insurance)
+// const MAIN = ["Salary", "PF", "Insurance", "PT", "TDS"];
 
-const getCategory = (type) => {
-  if (!type) return "Others";
+// const getCategory = (type) => {
+//   if (!type) return "Others";
 
-  let cat = type.split(" - ")[0].trim();
+//   let cat = type.split(" - ")[0].trim();
 
-  if (cat.toLowerCase() === "professional tax") return "PT";
+//   if (cat.toLowerCase() === "professional tax") return "PT";
 
-  return MAIN.includes(cat) ? cat : type;
-};
+//   return MAIN.includes(cat) ? cat : type;
+// };
 
-    // 1) Add ALL forecast rows (no collapsing). If there's a matching actual by id -> merge paid info,
-    // but only expose paid_amount/paid_date when the payment is actually paid.
-    // forecast.forEach((f) => {
-    //   const fid = f.expense_id != null ? String(f.expense_id) : null;
+//     // 1) Add ALL forecast rows (no collapsing). If there's a matching actual by id -> merge paid info,
+//     // but only expose paid_amount/paid_date when the payment is actually paid.
+//     // forecast.forEach((f) => {
+//     //   const fid = f.expense_id != null ? String(f.expense_id) : null;
 
-    //   // try expense_id match
-    //   let match = fid ? actualById.get(fid) : undefined;
+//     //   // try expense_id match
+//     //   let match = fid ? actualById.get(fid) : undefined;
 
-    //   // fallback: try by type+amount (some actual rows may lack expense_id)
-    //   if (!match) {
-    //     const key = `${String(f.type || "").trim().toLowerCase()}|${Number(f.amount || f.paid_amount || 0)}`;
-    //     const list = actualByTypeAmount[key] || [];
-    //     match = list.length ? list[0] : undefined;
-    //   }
+//     //   // fallback: try by type+amount (some actual rows may lack expense_id)
+//     //   if (!match) {
+//     //     const key = `${String(f.type || "").trim().toLowerCase()}|${Number(f.amount || f.paid_amount || 0)}`;
+//     //     const list = actualByTypeAmount[key] || [];
+//     //     match = list.length ? list[0] : undefined;
+//     //   }
 
-    //   // determine candidate paid amount/date from match (use sensible fallbacks)
-    //   const candidatePaidAmount =
-    //     match?.paid_amount != null
-    //       ? Number(match.paid_amount)
-    //       : match?.actual_amount != null
-    //       ? Number(match.actual_amount)
-    //       : f.paid_amount != null
-    //       ? Number(f.paid_amount)
-    //       : 0;
+//     //   // determine candidate paid amount/date from match (use sensible fallbacks)
+//     //   const candidatePaidAmount =
+//     //     match?.paid_amount != null
+//     //       ? Number(match.paid_amount)
+//     //       : match?.actual_amount != null
+//     //       ? Number(match.actual_amount)
+//     //       : f.paid_amount != null
+//     //       ? Number(f.paid_amount)
+//     //       : 0;
 
-    //   let candidatePaidDate = match?.paid_date ?? f.paid_date ?? null;
-    //   if (!candidatePaidDate && match?.month_year) {
-    //     candidatePaidDate = `${String(match.month_year).slice(0, 7)}-01`;
-    //   }
+//     //   let candidatePaidDate = match?.paid_date ?? f.paid_date ?? null;
+//     //   if (!candidatePaidDate && match?.month_year) {
+//     //     candidatePaidDate = `${String(match.month_year).slice(0, 7)}-01`;
+//     //   }
 
-    //   const statusFromMatch = match?.status ? String(match.status).trim().toLowerCase() : null;
+//     //   const statusFromMatch = match?.status ? String(match.status).trim().toLowerCase() : null;
 
-    //   // STRICT isPaid: require (paid_amount > 0 AND paid_date exists) OR explicit status === 'paid'
-    //   const isPaid = (candidatePaidAmount > 0 && candidatePaidDate) || statusFromMatch === "paid";
+//     //   // STRICT isPaid: require (paid_amount > 0 AND paid_date exists) OR explicit status === 'paid'
+//     //   const isPaid = (candidatePaidAmount > 0 && candidatePaidDate) || statusFromMatch === "paid";
 
-    //   // status shown in UI: prefer explicit paid marker, otherwise use forecast status or Not Paid
-    //   const status = isPaid ? "Paid" : f.status || (statusFromMatch ? (statusFromMatch === "paid" ? "Paid" : "Unpaid") : "Not Paid");
+//     //   // status shown in UI: prefer explicit paid marker, otherwise use forecast status or Not Paid
+//     //   const status = isPaid ? "Paid" : f.status || (statusFromMatch ? (statusFromMatch === "paid" ? "Paid" : "Unpaid") : "Not Paid");
 
-    //   merged.push({
-    //     expense_id: f.expense_id,
-    //     type: f.type,
-    //     description: f.description,
-    //     regular: f.regular ?? "No",
-    //     amount: Number(f.amount ?? f.paid_amount ?? 0),
-    //     paid_amount: isPaid ? Number(candidatePaidAmount || 0) : 0,
-    //     paid_date: isPaid ? (candidatePaidDate ?? null) : null,
-    //     status,
-    //     actual_amount: match ? (match.amount ?? match.paid_amount ?? match.actual_amount ?? 0) : 0,
-    //     _source: match ? "forecast+actual" : "forecast-only",
-    //     due_date: f.due_date ?? null,
-    //   });
-    // });
+//     //   merged.push({
+//     //     expense_id: f.expense_id,
+//     //     type: f.type,
+//     //     description: f.description,
+//     //     regular: f.regular ?? "No",
+//     //     amount: Number(f.amount ?? f.paid_amount ?? 0),
+//     //     paid_amount: isPaid ? Number(candidatePaidAmount || 0) : 0,
+//     //     paid_date: isPaid ? (candidatePaidDate ?? null) : null,
+//     //     status,
+//     //     actual_amount: match ? (match.amount ?? match.paid_amount ?? match.actual_amount ?? 0) : 0,
+//     //     _source: match ? "forecast+actual" : "forecast-only",
+//     //     due_date: f.due_date ?? null,
+//     //   });
+//     // });
 
-//  forecast.forEach((f) => {
-//   const fid = f.expense_id != null ? String(f.expense_id) : null;
-//   const match = fid ? actualById.get(fid) : null;
+// //  forecast.forEach((f) => {
+// //   const fid = f.expense_id != null ? String(f.expense_id) : null;
+// //   const match = fid ? actualById.get(fid) : null;
 
-//   // ✅ FIXED CONDITION
-//   if (f.regular === "Yes" && match) {
-//     return; // skip forecast row if already paid
-//   }
+// //   // ✅ FIXED CONDITION
+// //   if (f.regular === "Yes" && match) {
+// //     return; // skip forecast row if already paid
+// //   }
 
-//   merged.push({
-//     expense_id: f.expense_id,
-//     type: f.type,
-//     description: f.description,
-//     regular: f.regular ?? "No",
-//     amount: Number(f.amount ?? 0),
-//     paid_amount: 0,
-//     paid_date: null,
-//     status: "Not Paid",
-//     actual_amount: 0,
-//     _source: "forecast-only",
-//     due_date: f.due_date ?? null,
-//   });
-// });
+// //   merged.push({
+// //     expense_id: f.expense_id,
+// //     type: f.type,
+// //     description: f.description,
+// //     regular: f.regular ?? "No",
+// //     amount: Number(f.amount ?? 0),
+// //     paid_amount: 0,
+// //     paid_date: null,
+// //     status: "Not Paid",
+// //     actual_amount: 0,
+// //     _source: "forecast-only",
+// //     due_date: f.due_date ?? null,
+// //   });
+// // });
 
+// // forecast.forEach((f) => {
+// //   // ❌ Skip Insurance forecast (Insurance comes only from actual)
+// //   if (getCategory(f.type) === "Insurance") return;
+
+// //   const fid = f.expense_id != null ? String(f.expense_id) : null;
+// //   const match = fid ? actualById.get(fid) : null;
+
+// //   // ✅ Determine paid info from actual if exists
+// //   const paidAmount =
+// //     match?.paid_amount != null
+// //       ? Number(match.paid_amount)
+// //       : match?.actual_amount != null
+// //       ? Number(match.actual_amount)
+// //       : 0;
+
+// //   let paidDate = match?.paid_date ?? null;
+// //   if (!paidDate && match?.month_year) {
+// //     paidDate = `${String(match.month_year).slice(0, 7)}-01`;
+// //   }
+
+// //   // const isPaid = paidAmount > 0 && paidDate;
+// // const isPaid =
+// //   match &&
+// //   match.payment_month === selectedMonth &&
+// //   paidAmount > 0;
+
+// //   merged.push({
+// //     expense_id: f.expense_id,
+// //     type: f.type,
+// //     description: f.description,
+// //     regular: f.regular ?? "No",
+// //     amount: Number(f.amount ?? 0),
+
+// //     // ✅ PAID fields correctly populated
+// //     paid_amount: isPaid ? paidAmount : 0,
+// //     paid_date: isPaid ? paidDate : null,
+// //     status: isPaid ? "Paid" : "Not Paid",
+
+// //     actual_amount: isPaid ? paidAmount : 0,
+// //     _source: match ? "forecast+actual" : "forecast-only",
+// //     due_date: f.due_date ?? null,
+// //   });
+// // });
 // forecast.forEach((f) => {
 //   // ❌ Skip Insurance forecast (Insurance comes only from actual)
 //   if (getCategory(f.type) === "Insurance") return;
@@ -522,24 +565,23 @@ const getCategory = (type) => {
 //   const fid = f.expense_id != null ? String(f.expense_id) : null;
 //   const match = fid ? actualById.get(fid) : null;
 
-//   // ✅ Determine paid info from actual if exists
-//   const paidAmount =
-//     match?.paid_amount != null
-//       ? Number(match.paid_amount)
-//       : match?.actual_amount != null
-//       ? Number(match.actual_amount)
-//       : 0;
+//   // ✅ Month-aware payment check (CRITICAL FIX)
+//   const isPaid =
+//     match &&
+//     match.payment_month === selectedMonth &&
+//     Number(match.paid_amount || match.actual_amount || 0) > 0;
 
-//   let paidDate = match?.paid_date ?? null;
-//   if (!paidDate && match?.month_year) {
-//     paidDate = `${String(match.month_year).slice(0, 7)}-01`;
-//   }
+//   // ✅ Paid values ONLY if paid in this month
+//   const paidAmount = isPaid
+//     ? Number(match.paid_amount || match.actual_amount || 0)
+//     : 0;
 
-//   // const isPaid = paidAmount > 0 && paidDate;
-// const isPaid =
-//   match &&
-//   match.payment_month === selectedMonth &&
-//   paidAmount > 0;
+//   const paidDate = isPaid
+//     ? match.paid_date ||
+//       (match.month_year
+//         ? `${String(match.month_year).slice(0, 7)}-01`
+//         : null)
+//     : null;
 
 //   merged.push({
 //     expense_id: f.expense_id,
@@ -548,9 +590,9 @@ const getCategory = (type) => {
 //     regular: f.regular ?? "No",
 //     amount: Number(f.amount ?? 0),
 
-//     // ✅ PAID fields correctly populated
-//     paid_amount: isPaid ? paidAmount : 0,
-//     paid_date: isPaid ? paidDate : null,
+//     // ✅ CORRECT & SAFE
+//     paid_amount: paidAmount,
+//     paid_date: paidDate,
 //     status: isPaid ? "Paid" : "Not Paid",
 
 //     actual_amount: isPaid ? paidAmount : 0,
@@ -558,115 +600,84 @@ const getCategory = (type) => {
 //     due_date: f.due_date ?? null,
 //   });
 // });
-forecast.forEach((f) => {
-  // ❌ Skip Insurance forecast (Insurance comes only from actual)
-  if (getCategory(f.type) === "Insurance") return;
-
-  const fid = f.expense_id != null ? String(f.expense_id) : null;
-  const match = fid ? actualById.get(fid) : null;
-
-  // ✅ Month-aware payment check (CRITICAL FIX)
-  const isPaid =
-    match &&
-    match.payment_month === selectedMonth &&
-    Number(match.paid_amount || match.actual_amount || 0) > 0;
-
-  // ✅ Paid values ONLY if paid in this month
-  const paidAmount = isPaid
-    ? Number(match.paid_amount || match.actual_amount || 0)
-    : 0;
-
-  const paidDate = isPaid
-    ? match.paid_date ||
-      (match.month_year
-        ? `${String(match.month_year).slice(0, 7)}-01`
-        : null)
-    : null;
-
-  merged.push({
-    expense_id: f.expense_id,
-    type: f.type,
-    description: f.description,
-    regular: f.regular ?? "No",
-    amount: Number(f.amount ?? 0),
-
-    // ✅ CORRECT & SAFE
-    paid_amount: paidAmount,
-    paid_date: paidDate,
-    status: isPaid ? "Paid" : "Not Paid",
-
-    actual_amount: isPaid ? paidAmount : 0,
-    _source: match ? "forecast+actual" : "forecast-only",
-    due_date: f.due_date ?? null,
-  });
-});
 
   
-// 2) Append any actual-only rows that were not in forecast (show them too)
-    // actual.forEach((a) => {
-    //   const exists = merged.some(
-    //     (m) =>
-    //       m.expense_id != null &&
-    //       a.expense_id != null &&
-    //       String(m.expense_id) === String(a.expense_id)
-    //   );
+// // 2) Append any actual-only rows that were not in forecast (show them too)
+//     // actual.forEach((a) => {
+//     //   const exists = merged.some(
+//     //     (m) =>
+//     //       m.expense_id != null &&
+//     //       a.expense_id != null &&
+//     //       String(m.expense_id) === String(a.expense_id)
+//     //   );
 
-    //   if (!exists) {
-    //     // normalize paid_date similarly
-    //     let paidDate = a.paid_date ?? null;
-    //     if (!paidDate && a.month_year) paidDate = `${String(a.month_year).slice(0, 7)}-01`;
+//     //   if (!exists) {
+//     //     // normalize paid_date similarly
+//     //     let paidDate = a.paid_date ?? null;
+//     //     if (!paidDate && a.month_year) paidDate = `${String(a.month_year).slice(0, 7)}-01`;
 
-    //     const paidAmt =
-    //       a.paid_amount != null
-    //         ? Number(a.paid_amount)
-    //         : a.actual_amount != null
-    //         ? Number(a.actual_amount)
-    //         : Number(a.amount ?? 0);
-    //     const statusFromA = a.status ? String(a.status).trim().toLowerCase() : null;
-    //     const isPaidA = (paidAmt > 0 && paidDate) || statusFromA === "paid";
+//     //     const paidAmt =
+//     //       a.paid_amount != null
+//     //         ? Number(a.paid_amount)
+//     //         : a.actual_amount != null
+//     //         ? Number(a.actual_amount)
+//     //         : Number(a.amount ?? 0);
+//     //     const statusFromA = a.status ? String(a.status).trim().toLowerCase() : null;
+//     //     const isPaidA = (paidAmt > 0 && paidDate) || statusFromA === "paid";
 
-    //     merged.push({
-    //       expense_id: a.expense_id,
-    //       type: a.expense_type || a.type || "Other",
-    //       description: a.description,
-    //       regular: a.regular ?? "No",
-    //       amount: Number(a.amount ?? a.paid_amount ?? 0),
-    //       paid_amount: isPaidA ? paidAmt : 0,
-    //       paid_date: isPaidA ? paidDate : null,
-    //       status: isPaidA ? "Paid" : a.status ?? "Not Paid",
-    //       actual_amount: Number(a.amount ?? a.paid_amount ?? a.actual_amount ?? 0),
-    //       _source: "actual-only",
-    //       due_date: a.due_date ?? null,
-    //     });
-    //   }
-    // });
-actual.forEach((a) => {
-  if (isInsurance(a.expense_type || a.type)) return;
+//     //     merged.push({
+//     //       expense_id: a.expense_id,
+//     //       type: a.expense_type || a.type || "Other",
+//     //       description: a.description,
+//     //       regular: a.regular ?? "No",
+//     //       amount: Number(a.amount ?? a.paid_amount ?? 0),
+//     //       paid_amount: isPaidA ? paidAmt : 0,
+//     //       paid_date: isPaidA ? paidDate : null,
+//     //       status: isPaidA ? "Paid" : a.status ?? "Not Paid",
+//     //       actual_amount: Number(a.amount ?? a.paid_amount ?? a.actual_amount ?? 0),
+//     //       _source: "actual-only",
+//     //       due_date: a.due_date ?? null,
+//     //     });
+//     //   }
+//     // });
+// actual.forEach((a) => {
+//   if (isInsurance(a.expense_type || a.type)) return;
 
-  const exists =
-    a.expense_id != null &&
-    addedExpenseIds.has(String(a.expense_id));
+//   const exists =
+//     a.expense_id != null &&
+//     addedExpenseIds.has(String(a.expense_id));
 
-  if (!exists) {
-    merged.push({
-      expense_id: a.expense_id,
-      type: a.expense_type || a.type || "Other",
-      description: a.description,
-      regular: a.regular ?? "No",
-      amount: Number(a.amount ?? a.paid_amount ?? 0),
-      paid_amount: Number(a.paid_amount ?? 0),
-      paid_date: a.paid_date ?? null,
-      status: "Paid",
-      actual_amount: Number(a.amount ?? a.paid_amount ?? 0),
-      _source: "actual-only",
-      due_date: a.due_date ?? null,
-    });
-  }
-});
+//   if (!exists) {
+//     merged.push({
+//       expense_id: a.expense_id,
+//       type: a.expense_type || a.type || "Other",
+//       description: a.description,
+//       regular: a.regular ?? "No",
+//       amount: Number(a.amount ?? a.paid_amount ?? 0),
+//       paid_amount: Number(a.paid_amount ?? 0),
+//       paid_date: a.paid_date ?? null,
+//       status: "Paid",
+//       actual_amount: Number(a.amount ?? a.paid_amount ?? 0),
+//       _source: "actual-only",
+//       due_date: a.due_date ?? null,
+//     });
+//   }
+// });
 
 
-    return merged;
-  }, [monthDetails]);
+//     return merged;
+//   }, [monthDetails]);
+
+const mergedExpenses = useMemo(() => {
+  if (!monthDetails) return [];
+
+  const actual = monthDetails.actualExpenseItems || [];
+  const forecast = monthDetails.forecastExpenseItems || [];
+
+  // ✅ Just combine — backend already filtered by month
+  return [...actual, ...forecast];
+}, [monthDetails]);
+
 
   // CATEGORY DETECTION (Salary, PF, TDS, PT, Insurance)
   const MAIN = ["Salary", "PF", "Insurance", "PT", "TDS"];
@@ -828,10 +839,14 @@ const { categoryTotals, grandTotalExpenses } = useMemo(() => {
   if (!mergedExpenses) return [];
 
   return mergedExpenses.filter((exp) => {
-    const dateStr =
-      exp.status === "Paid"
-        ? exp.paid_date || exp.due_date
-        : exp.due_date;
+    // const dateStr =
+    //   exp.status === "Paid"
+    //     ? exp.paid_date || exp.due_date
+    //     : exp.due_date;
+const dateStr =
+  exp.status === "Paid"
+    ? exp.paid_date || exp.due_date
+    : exp.due_date || `${selectedMonth}-01`;
 
     if (!dateStr) return false;
 

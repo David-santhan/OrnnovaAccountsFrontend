@@ -57,23 +57,23 @@ const [invoiceSearch, setInvoiceSearch] = useState("");
 const [searchText, setSearchText] = useState("");
 
 
-const generateInvoiceNumber = (
-  projectID,
-  invoiceDate = new Date(),
-  milestoneIndex = null
-) => {
-  if (!projectID) return "";
-
-  const prefix = "INV";
-  const d = new Date(invoiceDate);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-
-  if (milestoneIndex !== null) {
-    return `${prefix}-${projectID}-MS${milestoneIndex}-${year}${month}`;
-  }
-
-  return `${prefix}-${projectID}-${year}${month}`;
+const initialInvoiceState = {
+  invoice_number: "",          // backend will fill
+  invoice_date: "",
+  client_name: "",
+  project_id: "",
+  start_date: "",
+  end_date: "",
+  invoice_cycle: "",
+  invoice_value: 0,
+  base_value: 0,
+  gst_amount: 0,
+  tds_amount: 0,
+  due_date: "",
+  billable_days: 0,
+  non_billable_days: 0,
+  received: "No",
+  received_date: "",
 };
 
 
@@ -154,22 +154,7 @@ useEffect(() => {
 
 const [actualValue,setActualValue] = useState();
   const [selectedInvoice, setSelectedInvoice] = useState(null);
-  const initialInvoiceState = {
-  invoice_number: "",
-  invoice_date: new Date().toISOString().split("T")[0],
-  client_name: "",
-  project_id: "",
-  start_date: "",
-  end_date: "",
-  invoice_cycle: "",
-  invoice_value: "",
-  gst_amount: "",
-  due_date: "",
-  billable_days: "",
-  non_billable_days: "",
-  received: "No",
-  received_date: "",
-};
+ 
 
 const [newInvoice, setNewInvoice] = useState(initialInvoiceState);
 const [month,setMonth] = useState("");
@@ -227,13 +212,8 @@ const handleAddInvoice = async () => {
       return; // Stop execution
     }
 
-    // 🔹 Prepare invoice data
-    const invoiceToSend = {
-      ...newInvoice,
-      invoice_value: Number(calculatedValues.invoice_value) || 0,
-      gst_amount: Number(calculatedValues.gst_amount) || 0,
-      tds_amount: Number(calculatedValues.tds_amount) || 0,
-    };
+const { invoice_number, ...invoiceToSend } = newInvoice;
+
 
     // 🔹 Auto-calculate due_date based on payment terms
     if (invoiceToSend.invoice_date && selectedClient?.paymentTerms) {
@@ -252,31 +232,45 @@ const handleAddInvoice = async () => {
    
     const data = await res.json();
 
-    if (res.ok && data.success) {
-      fetchInvoices();
-      setOpenDialog(false); 
-      setOpenPreview(false);
-      setCalculatedValues("");
-      setNewInvoice({
-        invoice_number: "",
-        invoice_date: "",
-        client_name: "",
-        project_id: "",
-        start_date: "",
-        end_date: "",
-        invoice_cycle: "",
-        invoice_value: 0,
-        gst_amount: 0,
-        tds_amount: 0,
-        due_date: "",
-        non_billable_days: 0,
-        received: "No",
-        received_date: "",
-      });
+    // if (res.ok && data.success) {
+    //   fetchInvoices();
+    //   setOpenDialog(false); 
+    //   setOpenPreview(false);
+    //   setCalculatedValues("");
+    //   setNewInvoice({
+    //     invoice_number: "",
+    //     invoice_date: "",
+    //     client_name: "",
+    //     project_id: "",
+    //     start_date: "",
+    //     end_date: "",
+    //     invoice_cycle: "",
+    //     invoice_value: 0,
+    //     gst_amount: 0,
+    //     tds_amount: 0,
+    //     due_date: "",
+    //     non_billable_days: 0,
+    //     received: "No",
+    //     received_date: "",
+    //   });
 
-      fetchActiveProjects();
-      fetchProjectsWithoutInvoice();
-    } else if (
+    //   fetchActiveProjects();
+    //   fetchProjectsWithoutInvoice();
+    // } 
+   if (res.ok && data.success) {
+
+  fetchInvoices();
+  fetchActiveProjects();
+  fetchProjectsWithoutInvoice();
+
+  // ✅ CHANGE: close dialog after save
+  setOpenDialog(false);
+  setOpenPreview(false);
+  resetForm();
+  setIsRaised(false);
+}
+
+else if (
       data.message === "Already Raised for this month for this project"
     ) {
       alert("⚠️ Invoice already raised for this project in the selected month.");
@@ -298,7 +292,9 @@ const handleAddInvoice = async () => {
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
     pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
-    pdf.save(`Invoice_${newInvoice.invoice_number || "Preview"}.pdf`);
+  const inv = selectedInvoice || newInvoice;
+pdf.save(`Invoice_${inv.invoice_number || "Preview"}.pdf`);
+
   });
 };
 const addDays = (dateStr, days) => {
@@ -1159,20 +1155,20 @@ useEffect(() => {
             variant="contained"
             color="secondary"
             size="small"
-            onClick={() => {
-              const safeClient = client || {
-                id: proj.clientID,
-                clientName: proj.clientName,
-                paymentTerms: proj.paymentTerms || 0,
-              };
+            onClick={async () => {
+
+  const safeClient = client || {
+    id: proj.clientID,
+    clientName: proj.clientName,
+    paymentTerms: proj.paymentTerms || 0,
+  };
 
               setSelectedProject(proj);
               setSelectedClient(safeClient);
 
-              const invoiceNumber = generateInvoiceNumber(
-                safeClient.clientName,
-                new Date()
-              );
+               // ✅ FETCH INVOICE NUMBER HERE
+        const invRes = await fetch("http://localhost:7760/invoices/next-number");
+        const invData = await invRes.json();
 
               const fixedCalc =
                 proj.isFixed === "Yes"
@@ -1193,27 +1189,27 @@ useEffect(() => {
               setCalculatedValues(calc);
 
               setNewInvoice({
-                ...initialInvoiceState,
-                invoice_number: invoiceNumber,
-                invoice_date: new Date().toISOString().split("T")[0],
-                client_name: safeClient.clientName,
-                project_id: proj.projectID,
-                invoice_cycle: proj.invoiceCycle || "Monthly",
-                base_value: calc.base_value,
-                gst_amount: calc.gst_amount,
-                tds_amount: calc.tds_amount,
-                invoice_value: calc.invoice_value,
-                received: "No",
-              });
+          ...initialInvoiceState,
+          invoice_number: invData.invoice_number, // ⭐ KEY LINE
+          invoice_date: new Date().toISOString().split("T")[0],
+          client_name: safeClient.clientName,
+          project_id: proj.projectID,
+          invoice_cycle: proj.invoiceCycle || "Monthly",
+          base_value: calc.base_value,
+          gst_amount: calc.gst_amount,
+          tds_amount: calc.tds_amount,
+          invoice_value: calc.invoice_value,
+          received: "No",
+        });
 
-              setIsRaised(true);
-              setOpenDialog(true);
-            }}
-          >
-            Raise
-          </Button>
-        );
-      }
+        setIsRaised(true);
+        setOpenDialog(true);
+      }}
+    >
+      Raise
+    </Button>
+  );
+}
 
       // 🔴 🔴 🔴 THIS WAS MISSING (ONLY ADDITION)
       return (
@@ -2031,29 +2027,14 @@ useEffect(() => {
   <DialogContent style={{backgroundColor:"whitesmoke",borderRadius:"5px"}} dividers>
     {/* Row 1: Invoice Number + Client Name */}
     <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-     <TextField
+   <TextField
   fullWidth
   label="Invoice Number"
   variant="outlined"
-  value={newInvoice.invoice_number}
-  onChange={(e) =>
-    setNewInvoice({ ...newInvoice, invoice_number: e.target.value })
-  }
-  defaultValue={
-    newInvoice.client_name && newInvoice.project_id
-      ? `${newInvoice.client_name}-${newInvoice.project_id}-${String(
-          new Date().getMonth() + 1
-        ).padStart(2, "0")}${new Date().getFullYear()}`
-      : ""
-  }
-  sx={{
-    "& .MuiOutlinedInput-root": {
-      "& fieldset": { borderColor: "black" },
-      "&:hover fieldset": { borderColor: "black" },
-      "&.Mui-focused fieldset": { borderColor: "black" },
-    },
-  }}
+  value={newInvoice.invoice_number || "Will be generated"}
+  InputProps={{ readOnly: true }}
 />
+
  <TextField
   type="date"
   fullWidth
@@ -2139,15 +2120,16 @@ useEffect(() => {
             const now = new Date();
             const month = String(now.getMonth() + 1).padStart(2, "0");
             const year = now.getFullYear();
-           const invoiceNumber = generateInvoiceNumber(
-  selectedClientName,
-  new Date()
-);
+       setNewInvoice({
+  ...newInvoice,
+  client_name: selectedClientName,
+});
+
 
             setNewInvoice({
               ...newInvoice,
               client_name: selectedClientName,
-              invoice_number: invoiceNumber,
+             
             });
           }
         } catch (err) {
@@ -2205,20 +2187,11 @@ useEffect(() => {
     const projectID = e.target.value;
 
     // 🔹 Update project_id and generate invoice number
-    setNewInvoice((prev) => {
-      const now = new Date();
-      const month = String(now.getMonth() + 1).padStart(2, "0");
-      const year = now.getFullYear();
-      const invoiceNumber = prev.client_name
-        ? `${prev.client_name}-${projectID}-${month}${year}`
-        : prev.invoice_number;
+   setNewInvoice((prev) => ({
+  ...prev,
+  project_id: projectID,
+}));
 
-      return {
-        ...prev,
-        project_id: projectID,
-        invoice_number: invoiceNumber,
-      };
-    });
 
     try {
       // 🔹 Fetch project details
@@ -2648,10 +2621,11 @@ projectData.milestones = Array.isArray(projectData.milestones)
   open={openPreview}
 
 onClose={() => {
-    setOpenPreview(false);
-    setSelectedInvoice(null);   // reset invoice data
-    setNewInvoice({});          // optional, reset new invoice too
-  }}
+  setOpenPreview(false);
+  setSelectedInvoice(null);
+  // ❌ DO NOT reset newInvoice here
+}}
+
     fullWidth
   maxWidth="md"
 >
